@@ -47,6 +47,9 @@
 - Phase 3 (case): only after hardware confirmation + caliper measurements.
 
 ## Open questions
+- Battery + power path + Rprog swap: **deferred by Sasha (2026-10-23)**, battery
+  goes in last. Reminder before first charge: stock Rprog 1.2k is ~3x too much
+  for 300 mAh; charge only supervised until swapped.
 - LiPo is **300 mAh** (Sasha, 2026-10-23); physical size still unknown (needed
   for Phase 3). Stock Rprog 1.2k = ~1 A = 3.3C, too much: needs 4.7-5.1k
   (Sasha only has 100k on hand, which is fine for the divider, not Rprog).
