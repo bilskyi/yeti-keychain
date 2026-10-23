@@ -6,25 +6,44 @@
   installed (`~/esp/esp-idf`), same as the BIT project. Consequences:
   - no U8g2: own SH1106/SSD1306 driver + small graphics lib (`main/display/`);
   - no external libraries, so nothing to pin; IDF version pinned by install;
-  - `pio check` (cppcheck) is replaced by GCC `-fanalyzer` on the firmware
-    (`-DKC_ANALYZE=1`) + `clang --analyze` on the host-built logic;
+  - `pio check` (cppcheck) replaced by GCC `-fanalyzer` on the firmware
+    (`-DKC_ANALYZE=1`, warnings fatal) + `clang --analyze` on host-built logic;
   - sources live in `main/` (IDF convention) instead of `src/`.
 - Use the py3.12 IDF Python env (`. ./env.sh`); the py3.14 env fails export.sh's
   requirements check (esp-coredump 1.17.0 excluded by constraints).
 - Our component builds with `-Wall -Wextra -Werror` + extras.
 - Feature flags overridable with `-DKC_FEATURES="FEATURE_X=1;..."`, one build
-  dir per variant (`-B build-allon`).
+  dir per variant (`-B build-allon`). Sources listed explicitly in
+  `main/CMakeLists.txt` (IDF can't re-glob).
+- Night mode stub = uptime cycle (30 min awake / 10 min night); any input ends
+  the current night; BTN_A_LONG forces night. Night face = shut eyes + zzz
+  (~130 lit px vs ~1400 awake).
+- Low battery / brownout: low-battery face 4 s, then deep sleep with a 10 min
+  **timer retry** (a brownout can be switch bounce, not an empty cell).
+- Frame pacing: 30 fps while animating, 5 fps when still; flush sends only
+  changed column ranges per page, so a still face costs no I2C traffic.
+- Placeholder button/LIS3DH sources exist in Phase 1 only so the all-ON build
+  compiles; they produce no events.
 
 ## Done
-- Phase 0: scaffold (git, .gitignore, CMake, sdkconfig.defaults, config.h,
-  folders, docs/WIRING.md, IDEAS.md, PROGRESS.md). Empty app builds clean.
+- Phase 0: scaffold. Empty app builds clean.
+- Phase 1 (v0.1), verified in software only:
+  - builds: default, all-ON, SSD1306, -fanalyzer default + all-ON, all clean;
+  - host: `make test` passes, `make analyze` clean, `make preview` renders;
+  - default image 222,880 B (flash code 116.8 KB, rodata 43.8 KB),
+    DRAM 67.7 KB / 321 KB (21 %).
 
 ## In progress
-- Phase 1: v0.1 firmware.
+- Waiting for Sasha to flash and confirm on hardware. **Nothing visual is
+  verified on a real panel yet.**
 
 ## Next
-- Phase 1 verification, then report and STOP.
+- Phase 2 (stubs): flesh out button + LIS3DH placeholders with TODOs and the
+  deep-sleep wake wiring. Only after Phase 1 is confirmed.
+- Phase 3 (case): only after hardware confirmation + caliper measurements.
 
 ## Open questions
-- LiPo capacity / size still placeholders (`{CAPACITY}`, `{SIZE}`) in the brief.
-  Needed for Phase 3 (case) and for the battery % curve; not for v0.1.
+- LiPo capacity / size still placeholders (`{CAPACITY}`, `{SIZE}`). Needed for
+  Phase 3 and the battery % curve; not for v0.1.
+- Which panel controller (SH1106 assumed) is confirmed on first flash.
+- Super Mini power LED: always-on, drains the cell even in deep sleep. Remove it?

@@ -91,6 +91,11 @@
 
 // How long the low-battery face stays up before the device deep-sleeps.
 #define LOWBAT_FACE_MS 4000
+// ...and when it wakes to try again. A brownout is not proof of an empty
+// cell (slide-switch bounce at power-on can cause one), so sleeping forever
+// would leave a full keychain dead until the switch is cycled. A really empty
+// cell just browns out again on the retry, which costs about a second awake.
+#define LOWBAT_RETRY_MS (10UL * 60UL * 1000UL)
 
 // ---------------------------------------------------------------------------
 // Face timing

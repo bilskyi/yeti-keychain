@@ -1,8 +1,24 @@
-# Sources are globbed per folder so adding a file to display/, face/, input/,
-# power/ or net/ needs no edit here. Each feature's code is always compiled and
-# guarded inside by its FEATURE_* flag, so a flag can never "forget" a file.
-file(GLOB KC_SRCS
-     "*.c" "display/*.c" "face/*.c" "input/*.c" "power/*.c" "net/*.c")
+# Listed explicitly: IDF evaluates this file in script mode, where a glob
+# cannot re-run on its own, so a new file would silently not be built.
+# Feature-specific files are always listed; each is guarded inside by its
+# FEATURE_* flag, so flipping a flag never needs an edit here.
+set(KC_SRCS
+    main.c
+    i2c_bus.c
+    display/gfx.c
+    display/display.c
+    face/face.c
+    face/mood.c
+    face/hud.c
+    input/input_event.c
+    input/input.c
+    input/buttons.c
+    input/accel_lis3dh.c
+    power/power.c
+    power/policy.c
+    power/battery.c
+    power/battery_logic.c
+    net/net.c)
 
 idf_component_register(SRCS ${KC_SRCS}
                        INCLUDE_DIRS "."
