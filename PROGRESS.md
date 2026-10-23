@@ -70,9 +70,19 @@
   All checks pass (10 STLs). Found and fixed by checks: switch well vs back
   text, arm reach vs desk, joint bosses printed point-up (overhang).
 
+- 2026-10-23 Sasha found a ready model instead: the **Yeti** from
+  Compagnon 309 (MakerWorld 2109424; USB-powered, ESP32-C3 + OLED + touch).
+  `case/yeti/`: 3 belly buttons cut into the original body (pockets square
+  to the sloped, solid belly; adds no supports); battery power via a new
+  electronics carrier + back plate (2 stacked USB-C, switch, LiPo), replacing
+  the original tray, whose front wall blocked the buttons. All fit probes
+  pass against the real mesh; both new parts print without supports.
+  Originals stay local and untracked (third-party design).
+
 ## In progress
-- Case: waiting for Sasha's verdict on Boltik v3, then caliper measurements
-  to replace PLACEHOLDER values.
+- Yeti: waiting for Sasha's review; then caliper measurements (boards,
+  battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design
+  parked in case/.
 
 ## Next
 - Phase 2 (stubs): flesh out button + LIS3DH placeholders with TODOs and the
