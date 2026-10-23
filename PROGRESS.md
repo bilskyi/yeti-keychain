@@ -47,6 +47,8 @@
 - Phase 3 (case): only after hardware confirmation + caliper measurements.
 
 ## Open questions
-- LiPo capacity / size still placeholders (`{CAPACITY}`, `{SIZE}`). Needed for
-  Phase 3 and the battery % curve; not for v0.1.
+- LiPo is **300 mAh** (Sasha, 2026-10-23); physical size still unknown (needed
+  for Phase 3). Stock Rprog 1.2k = ~1 A = 3.3C, too much: needs 4.7-5.1k
+  (Sasha only has 100k on hand, which is fine for the divider, not Rprog).
+- Battery divider will be 100k + 100k (not 1M + 1M), ratio still 2.
 - Super Mini power LED: always-on, drains the cell even in deep sleep. Remove it?

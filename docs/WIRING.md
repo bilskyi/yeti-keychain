@@ -18,7 +18,7 @@
 | ESP32-C3 Super Mini | generic clone, native USB-C, no charger |
 | 1.3" 128×64 I²C OLED, 4-pin | SH1106 assumed; SSD1306 is a one-line switch in `main/config.h` |
 | TP4056 USB-C module with DW01 protection | charging + over-discharge cut-off |
-| LiPo pouch cell | **capacity / size: TBD (still a placeholder)** |
+| LiPo pouch cell | **300 mAh**, size TBD |
 | Slide switch | in OUT+ line |
 | Tactile buttons ×3 | later, not wired yet |
 | LIS3DH accelerometer | later, not bought yet |
@@ -54,7 +54,7 @@
 | Button C | GPIO5 | to GND, internal pull-up |
 | LIS3DH SDA/SCL | GPIO6 / GPIO7 | shares the OLED's I²C bus (address 0x18 or 0x19, never clashes with 0x3C) |
 | LIS3DH INT1 | GPIO0 | wake source |
-| Battery sense | GPIO4 (ADC1_CH4) | 1 MΩ / 1 MΩ divider from battery+ (TP4056 OUT+ side of the switch) to GND, 100 nF from GPIO4 to GND |
+| Battery sense | GPIO4 (ADC1_CH4) | 100 kΩ / 100 kΩ divider (1 MΩ / 1 MΩ also works) from battery+ (TP4056 OUT+ side of the switch) to GND, 100 nF from GPIO4 to GND |
 
 ## Pins to avoid
 
