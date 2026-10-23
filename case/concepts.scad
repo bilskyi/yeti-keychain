@@ -125,6 +125,96 @@ module ghost() {
     color(body) translate([0, 32.5, 10]) rotate([0, 90, 0]) rotate_extrude() translate([3.6, 0]) circle(d = 3);
 }
 
+// --------------------------------------------------------------- arcade
+// A tiny upright arcade cabinet: lit marquee on top, the screen in the
+// cabinet, and a sloped control deck with a joystick and the three real
+// buttons. The keyring goes through a loop on the marquee.
+module arcade() {
+    body = "#5b3fd1"; trim = "#141218"; lit = "#ffd23f";
+    color(body) difference() {
+        union() {
+            translate([-20, -28, 0]) cube([40, 54, 22]);                    // cabinet
+            hull() {                                                          // control deck
+                translate([-20, -15, -9]) cube([40, 3, 9]);
+                translate([-20, -9.5, -0.5]) cube([40, 0.5, 0.5]);
+            }
+            translate([-20, 17, -5]) cube([40, 9, 5]);                       // marquee hood
+        }
+        translate([0, 3, -0.01]) linear_extrude(2) rrect(34, 20, 2.5);       // screen bezel
+        translate([0, -22, -0.01]) linear_extrude(0.8) square([28, 1.2], center = true);  // coin slot
+    }
+    // side T-moulding
+    color(trim) for (sx = [-1, 1]) translate([sx * 20 - (sx > 0 ? 0 : 0.8), -28, -9]) cube([0.8, 54, 31]);
+    translate([0, 3, 1.9]) screen(30, 15.5, 1.5);
+    // marquee panel
+    color(lit) translate([0, 21.5, -5.3]) linear_extrude(0.4) rrect(34, 6.5, 1);
+    color(trim) translate([0, 21.5, -5.6]) linear_extrude(0.4)
+        mirror([1, 0, 0]) text("PET", size = 4.2, halign = "center", valign = "center", font = "Liberation Sans:style=Bold");
+    // joystick + three buttons standing on the sloped deck: the deck's top
+    // runs from (y -12, z -9) to (y -9, z -0.5); its outward normal is
+    // (y 0.94, z -0.33), i.e. +Z rotated -109.5 degrees about X.
+    translate([0, -10.5, -4.75]) rotate([-109.5, 0, 0]) {
+        color(trim) translate([11, 0, 0]) { cylinder(d = 1.6, h = 4); translate([0, 0, 4]) color("#e8322f") sphere(d = 3.6); }
+        for (i = [0 : 2]) color(["#e8322f", "#2fb4e8", "#47d36b"][i]) translate([-11 + i * 6, 0, 0]) cylinder(d = 4.2, h = 1.4);
+    }
+    color(trim) translate([0, 29.5, -2.5]) rotate([0, 90, 0]) rotate_extrude() translate([3.2, 0]) circle(d = 2.2);
+}
+
+// ------------------------------------------------------------------ cat
+// A cat head: pointy ears (the keyring goes through a hole in one), the
+// screen as the face, cheek whiskers, and the three buttons as pink toe
+// beans on a paw tucked under the chin.
+module cat() {
+    fur = "#3b3a40"; pink = "#f29bb2"; light = "#e9e3d8";
+    color(fur) difference() {
+        union() {
+            hull() for (sx = [-1, 1], sy = [-1, 1]) translate([sx * 15, sy * 11, 10]) scale([1, 1, 1.15]) sphere(r = 9);
+            for (sx = [-1, 1]) hull() {                                       // ears
+                translate([sx * 13, 14, 10]) scale([1.3, 0.8, 1]) sphere(r = 6);
+                translate([sx * 19, 31, 10]) sphere(r = 1.6);
+            }
+        }
+        translate([0, 1, -30]) linear_extrude(30 - 0.8) offset(r = 3) square([28, 14], center = true);
+        translate([-17.5, 26, -10]) cylinder(d = 3.8, h = 40);                // keyring hole in the left ear
+    }
+    color(pink) for (sx = [-1, 1]) translate([sx * 15.5, 20, 10]) scale([1, 1.6, 1]) sphere(r = 2.4);  // inner ears (peek out)
+    translate([0, 1, -0.9]) screen(31, 17, 3);
+    // whiskers
+    color(light) for (sx = [-1, 1], i = [-1 : 1]) translate([sx * 22, -6 + i * 2.6, 0.2]) rotate([0, 0, sx * i * -9])
+        rotate([0, 90, 0]) cylinder(d = 0.9, h = 9, center = true);
+    // paw with toe beans = the buttons
+    color(light) translate([0, -17, 3]) scale([1.7, 0.8, 0.9]) sphere(r = 7);
+    color(pink) for (i = [-1 : 1]) translate([i * 5.2, -16 + abs(i) * 1.2, -3.4]) cylinder(d = 3.8, h = 1.2);
+}
+
+// ------------------------------------------------------------- cassette
+// A chunky cassette tape. The screen is the tape window, so the pet's
+// two eyes sit where the reels would be. Buttons live in the trapezoid at
+// the bottom, the corner screw hole carries the keyring.
+module cassette() {
+    shell = "#1c1d21"; label = "#f2e9d6"; stripe = "#e4572e"; stripe2 = "#f2a541";
+    color(shell) difference() {
+        linear_extrude(20) rrect(58, 38, 3);
+        translate([0, 0, -0.01]) linear_extrude(0.6) rrect(52, 29, 2);       // label recess
+        translate([-25.5, 15, -1]) cylinder(d = 3.6, h = 30);                 // keyring hole
+    }
+    color(label) translate([0, 2, 0.5]) linear_extrude(0.2, center = true) difference() {
+        rrect(50, 24, 1.5);
+        rrect(33, 17.5, 2);
+    }
+    color(stripe) translate([0, 12.2, 0.35]) cube([50, 1.6, 0.3], center = true);
+    color(stripe2) translate([0, 10.6, 0.35]) cube([50, 1.6, 0.3], center = true);
+    translate([0, 2, 0.4]) screen(31, 16, 2);
+    // bottom trapezoid with the three buttons
+    color("#2a2c31") translate([0, 0, -0.6]) linear_extrude(0.6) polygon([[-20, -19], [20, -19], [16, -12.5], [-16, -12.5]]);
+    color(stripe) for (i = [-1 : 1]) translate([i * 9, -15.6, -1.6]) cylinder(d = 4.2, h = 1.0);
+    // screws
+    color("#8d8f95") for (sx = [-1, 1], sy = [-1, 1]) if (!(sx < 0 && sy > 0)) translate([sx * 25.5, sy * 15, -0.4]) cylinder(d = 2.6, h = 0.4);
+}
+
 if (concept == "tv") tv();
 else if (concept == "helmet") helmet();
+else if (concept == "arcade") arcade();
+else if (concept == "cat") cat();
+else if (concept == "cassette") cassette();
 else ghost();
