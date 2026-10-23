@@ -1,73 +1,69 @@
-# Case: "Boltik", a goofy robot (placeholder dimensions)
+# Case: "Boltik" v2, a goofy 3D robot (placeholder dimensions)
 
-Parametric OpenSCAD model: shell (head with limbs, ears and antenna), back
-lid, button caps, wind-up key. `concepts.scad` holds the earlier form sketches.
-**Every part size in `params.scad` marked `PLACEHOLDER` is a typical value,
-not a measurement.** Measure your parts and replace them before a real print.
+Parametric OpenSCAD model. **Every part size in `params.scad` marked
+`PLACEHOLDER` is a typical value, not a measurement.** Measure your parts and
+replace them before printing for real. `concepts.scad` holds the earlier
+form sketches.
 
 ```bash
-cd case && ./build.sh      # STLs + PNG previews into out/, then the checks
+cd case && ./build.sh      # STLs (print-oriented) + previews into out/, then all checks
 ```
 
 `build.sh` needs OpenSCAD (`brew install --cask openscad@snapshot`; the
 stable cask is disabled in Homebrew because it fails Gatekeeper).
 
-## What's where
+## Parts
 
-| | |
-|---|---|
-| Front | screen window, `DON'T PRESS` above 1–3 buttons, a crooked bandage on the forehead, cheek bolts (all engraved) |
-| Top | lightning-bolt antenna; the loop at its tip is the keyring |
-| Sides | satellite-dish ear and bolt ear; one arm waves, one hangs |
-| Bottom | stubby legs with big feet; two USB-C cut-outs between/behind them (the legs are in front of the plugs, never in their path) |
-| Left side (looking at the screen) | slide-switch slot |
-| Back | lid engraved `WARRANTY VOID IF ANNOYED`, friction-fit lip, hole for the wind-up key |
+| File | What | Print |
+|---|---|---|
+| `body.stl` | the head as a tub, with arms, legs, ears, antenna (the keyring loop) | **back down**, as exported |
+| `plate.stl` | the face: bezel, rivets, bandage, blush, DON'T PRESS, button collars | **inner face down**, as exported |
+| `caps.stl` | 3 button caps | flange down |
+| `key.stl` | wind-up key for the back | bow down |
+| `spacers.stl` | 2 rings between the plate and the OLED at the screws | flat |
 
-Overall: 66 × 79 × 21.6 mm with limbs and antenna (head 44.6 × 48.3).
+Plus **2 × M2×8 self-tapping screws** (through the plate and the OLED's top
+mounting holes into the bosses).
 
-Inside, front to back: OLED and buttons → Super Mini + TP4056 → battery +
-switch → (LIS3DH, if `accel_pocket = true`) → lid.
+Why two shells: whatever faces the printer bed comes out flat. The body
+prints back down and the plate face up, so everything the viewer sees grows
+upward and can be round; only the back is flat. Every limb is a "pill": a
+flat base on the back plane and a dome toward the front, so it never
+overhangs.
 
-Size with placeholders: head **39.6 × 45.3 × 21.6 mm**; ~46 mm wide across the ears, ~59 mm tall to the top of the antenna.
+Overall about 68 × 84 × 23 mm with limbs and antenna. Seen from the front,
+the switch is on the left (behind the hanging arm and below the bolt ear).
 
-## Printing
+## Assembly
 
-- `shell.stl`: print **face down** (the front face on the bed). No supports;
-  the USB-C cut-outs' top edges and the ears' undersides are short bridges/overhangs.
-- `lid.stl`: plate down.
-- `caps.stl`: flange down. Print a spare or two; they are tiny.
-- `key.stl`: bow down. Push the shaft into the lid hole; it is sized to turn
-  (`key_fit`), add a drop of glue if it should not.
-- PLA or PETG, 0.2 mm layers. If the lid is too tight or loose, change `tol`.
+1. Battery into the body (bottom, low X), switch into its slot.
+2. Super Mini and TP4056 (USB-C ports into the bottom cut-outs).
+3. OLED: its top mounting holes onto the two bosses.
+4. Spacers on the OLED's top holes, caps into the plate, buttons behind them.
+5. Plate on: the body's lip keys into the plate's groove. Two screws.
+6. Key into the hole in the back.
 
-## Assembly notes (v0)
+## Print rules the design keeps (asserted in the model)
 
-- Buttons sit behind the caps, pressed against the boards behind them; fix
-  each button with a dab of hot glue. The 6×6 legs splay to ~8 mm: bend
-  them inward or the glue holds them away from the walls.
-- Boards and battery are held by the stack and the lid; a strip of
-  double-sided tape under each board helps.
-
-## Print rules the design keeps
-
-- Shell prints face down. Nothing stands proud of the front face; front
-  detail is engraved (lines >= 0.7 mm wide, 0.5 mm deep).
-- Limbs, ears and antenna are flat shapes lying on the bed: no supports.
-- Anything that carries load (limbs, antenna, keyring loop wall) is >= 3 mm.
-- These are asserted in the model; a violation stops the build.
+- Anything that carries load (limbs, antenna, keyring loop wall) >= 3 mm.
+- Engraved lines >= 0.7 mm wide.
+- Walls beside the lip / plate above its groove not thinner than 1.2 / 1.0 mm.
+- Switch lever slot clear of the arm and ear; legs shallower than the USB-C
+  plugs are deep, so they never block a cable.
 
 ## Checks (`check.py`)
 
-1. Every internal part has ≥ `tol` gap to the walls, to the lid lip and to
-   every other part. Allowed exceptions: the OLED glass and button flanges
-   touch the front face, the USB-C ports reach the bottom wall, and the switch
-   touches the right wall where its lever goes through.
-   The head's rounded corners count: a part's corner must stay >= tol inside the arc.
-2. Every STL is watertight: each edge is shared by exactly two triangles.
-3. Every STL is printable as exported: downward-facing patches above the bed
-   are listed; a sloped one steeper than 45 degrees (needs support) or a
-   bridge wider than 15 mm both ways fails. Currently the longest bridge is
-   13 mm (USB-C recess roof) and there are no overhangs.
+1. **Fit in 3D**: every internal part, grown by `tol` (except on sides
+   marked flush), is intersected with the body, plate and spacers in place;
+   the result must be empty. Plus >= `tol` between parts.
+2. **Watertight**: every edge shared by exactly two triangles, no degenerate ones.
+3. **Printable as exported**: downward-facing patches above the bed are
+   listed; a slope steeper than 45° (needs support) or a bridge wider than
+   15 mm fails. Bridge width is measured as 4·area/perimeter as well, so a
+   thin groove round the head is not mistaken for a huge bridge.
 
-These check the model against **its own parameters**. With placeholder
+Each check was shown to fail on deliberately broken input (overlapping
+buttons, oversized screw bosses, a floating sphere / wide roof).
+
+These verify the model against **its own parameters**. With placeholder
 dimensions, "passes" does not mean your real parts fit.

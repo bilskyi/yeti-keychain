@@ -1,117 +1,101 @@
-"""Checks the case without printing it. Stdlib only.
+"""Checks the case without printing it. Stdlib only (plus the openscad CLI).
 
-usage: python3 -I check.py <openscad .echo output> [part.stl ...]
+usage: python3 -I check.py <layout.echo> <case.scad> [part.stl ...]
 
-1. Clearance: every component reported by keychain_case.scad sits inside the
-   cavity with >= tol to each wall (a side listed as "flush" may touch: the
-   OLED glass on the front face, USB-C ports at the bottom wall, the switch
-   lever through the right wall), stays >= tol in front of the lid's lip,
-   and is >= tol away from every other component along at least one axis.
-   The cavity's rounded corners count too: a part's corner must stay >= tol
-   inside the arc.
-2. Watertight: every edge of every STL triangle is shared by exactly two
-   triangles (closed, manifold surface), and no triangle is degenerate.
-3. Printable as exported (each STL is already in its print orientation, bed
-   = lowest Z): every downward-facing patch above the bed is reported. A
-   patch steeper than 45 degrees from vertical that is not flat needs
-   support -> FAIL. A flat patch is a bridge; one wider than MAX_BRIDGE mm
-   in both directions -> FAIL.
+1. Fit, in real 3D: for every internal part reported by the model, grow its
+   box by tol (by nothing on the sides marked "flush", e.g. the OLED glass on
+   the face plate) and intersect it with every printed solid in place (body,
+   face plate, spacers). The result must be empty. This sees bosses, lips,
+   rounded corners, anything, not just the cavity's bounding box.
+2. Parts keep >= tol from each other (parts of one group, "oled:*", may touch).
+3. Watertight: every edge of every STL is shared by exactly two triangles,
+   no degenerate triangles.
+4. Printable as exported (each STL is in its print orientation, bed = lowest
+   Z): downward-facing patches above the bed are listed. A sloped patch
+   steeper than 45 degrees from vertical needs support -> FAIL; a flat one is
+   a bridge, and wider than MAX_BRIDGE mm in both directions -> FAIL.
 
 Exits non-zero on any failure.
 """
 import ast
 import itertools
+import os
 import re
 import struct
+import subprocess
 import sys
+import tempfile
 from collections import Counter
 
 EPS = 1e-6
 MAX_BRIDGE = 15.0     # mm a bridge may span in both directions
-OVERHANG_NZ = -0.72  # normal.z below this = more than ~46 deg from vertical
+OVERHANG_NZ = -0.72   # normal.z below this = more than ~46 deg from vertical
 
 
 def read_tol():
     with open("params.scad") as f:
-        m = re.search(r"^tol\s*=\s*([0-9.]+)\s*;", f.read(), re.M)
-    return float(m.group(1))
+        return float(re.search(r"^tol\s*=\s*([0-9.]+)\s*;", f.read(), re.M).group(1))
 
 
 def parse_echo(path):
-    comps, cavity, lip, corners = [], None, None, (0.0, 0.0)
+    comps = []
     for line in open(path):
         m = re.match(r'ECHO: "(.*)"', line.strip())
-        if not m:
-            continue
-        f = m.group(1).split("|")
-        if f[0] == "COMP":
+        if m and m.group(1).startswith("COMP|"):
+            f = m.group(1).split("|")
             comps.append((f[1], ast.literal_eval(f[2]), ast.literal_eval(f[3]), f[4]))
-        elif f[0] == "CAVITY":
-            cavity = (ast.literal_eval(f[1]), ast.literal_eval(f[2]))
-        elif f[0] == "LIP":
-            lip = float(f[1])
-        elif f[0] == "CORNERS":
-            corners = (float(f[1]), float(f[2]))
-    return comps, cavity, lip, corners
+    return comps
 
 
-def check_corners(comps, cavity, corners, tol):
-    """A part's XY corner inside a rounded cavity corner must stay inside the arc."""
-    (r_bot, r_top), (ix, iy) = corners, cavity[1][:2]
-    arcs = [((r_bot, r_bot), r_bot, lambda x, y: x < r_bot and y < r_bot),
-            ((ix - r_bot, r_bot), r_bot, lambda x, y: x > ix - r_bot and y < r_bot),
-            ((r_top, iy - r_top), r_top, lambda x, y: x < r_top and y > iy - r_top),
-            ((ix - r_top, iy - r_top), r_top, lambda x, y: x > ix - r_top and y > iy - r_top)]
+def check_pairs(comps, tol):
     errors = []
-    for name, mn, mx, _ in comps:
-        for x, y in ((mn[0], mn[1]), (mx[0], mn[1]), (mn[0], mx[1]), (mx[0], mx[1])):
-            for (cx, cy), r, inside in arcs:
-                if inside(x, y):
-                    gap = r - ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
-                    if gap < tol - EPS:
-                        errors.append(f"{name}: corner ({x:.1f},{y:.1f}) only {gap:.2f} mm inside the rounded wall")
-    return errors
-
-
-def check_clearance(comps, cavity, lip, tol):
-    errors = []
-    cmin, cmax = cavity
-    for name, mn, mx, flush in comps:
-        for ax, a in enumerate("xyz"):
-            lo_need = 0 if f"{a}-" in flush else tol
-            hi_need = 0 if f"{a}+" in flush else tol
-            hi_wall = lip if a == "z" else cmax[ax]
-            lo_gap, hi_gap = mn[ax] - cmin[ax], hi_wall - mx[ax]
-            if lo_gap < lo_need - EPS:
-                errors.append(f"{name}: {lo_gap:.2f} mm to the {a}- wall (need {lo_need})")
-            if hi_gap < hi_need - EPS:
-                what = "lid lip" if a == "z" else f"{a}+ wall"
-                errors.append(f"{name}: {hi_gap:.2f} mm to the {what} (need {hi_need})")
     for (n1, a1, b1, _), (n2, a2, b2, _) in itertools.combinations(comps, 2):
-        # separation along each axis (negative = overlap on that axis)
+        if ":" in n1 and n1.split(":")[0] == n2.split(":")[0]:
+            continue
         sep = max(max(a2[i] - b1[i], a1[i] - b2[i]) for i in range(3))
         if sep < tol - EPS:
             errors.append(f"{n1} / {n2}: {sep:.2f} mm apart (need {tol})")
     return errors
 
 
+def check_probes(comps, scad):
+    """Render each part's grown box intersected with the printed solids."""
+    errors = []
+    with tempfile.TemporaryDirectory() as d:
+        for i, (name, *_rest) in enumerate(comps):
+            out = os.path.join(d, f"probe{i}.stl")
+            r = subprocess.run(["openscad", "--backend=manifold", "-D", 'part="probe"',
+                                "-D", f"probe_i={i}", "--export-format", "asciistl", "-o", out, scad],
+                               capture_output=True, text=True)
+            empty = "top level object is empty" in r.stderr.lower()
+            has_geometry = os.path.exists(out) and b"facet" in open(out, "rb").read()
+            if not empty and has_geometry:
+                tris = read_stl(out)
+                zs = [p for t in tris for p in t]
+                lo = [min(p[k] for p in zs) for k in range(3)]
+                hi = [max(p[k] for p in zs) for k in range(3)]
+                errors.append(f"{name}: hits a printed part around "
+                              f"[{lo[0]:.1f}..{hi[0]:.1f}, {lo[1]:.1f}..{hi[1]:.1f}, {lo[2]:.1f}..{hi[2]:.1f}]")
+            elif not empty and r.returncode != 0:
+                errors.append(f"{name}: probe failed to render: {r.stderr.strip()[-200:]}")
+    return errors
+
+
 def read_stl(path):
     data = open(path, "rb").read()
-    tris = []
     if data[:5] == b"solid" and b"facet" in data[:400]:
         verts = re.findall(rb"vertex\s+(\S+)\s+(\S+)\s+(\S+)", data)
         v = [tuple(float(c) for c in t) for t in verts]
-        tris = [v[i:i + 3] for i in range(0, len(v), 3)]
-    else:
-        (n,) = struct.unpack_from("<I", data, 80)
-        for i in range(n):
-            f = struct.unpack_from("<12f", data, 84 + i * 50)
-            tris.append([f[3:6], f[6:9], f[9:12]])
+        return [v[i:i + 3] for i in range(0, len(v), 3)]
+    (n,) = struct.unpack_from("<I", data, 80)
+    tris = []
+    for i in range(n):
+        f = struct.unpack_from("<12f", data, 84 + i * 50)
+        tris.append([f[3:6], f[6:9], f[9:12]])
     return tris
 
 
-def check_watertight(path):
-    tris = read_stl(path)
+def check_watertight(tris):
     key = lambda p: tuple(round(c, 4) for c in p)
     edges, degenerate = Counter(), 0
     for t in tris:
@@ -121,8 +105,7 @@ def check_watertight(path):
             continue
         for e in ((a, b), (b, c), (c, a)):
             edges[tuple(sorted(e))] += 1
-    bad = sum(1 for n in edges.values() if n != 2)
-    return len(tris), bad, degenerate
+    return sum(1 for n in edges.values() if n != 2), degenerate
 
 
 def normal(t):
@@ -130,20 +113,16 @@ def normal(t):
     ux, uy, uz = bx - ax, by - ay, bz - az
     vx, vy, vz = cx - ax, cy - ay, cz - az
     nx, ny, nz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
-    area2 = (nx * nx + ny * ny + nz * nz) ** 0.5
-    return (nx / area2, ny / area2, nz / area2, area2 / 2) if area2 > 1e-12 else None
+    m = (nx * nx + ny * ny + nz * nz) ** 0.5
+    return (nx / m, ny / m, nz / m, m / 2) if m > 1e-12 else None
 
 
-def check_overhangs(path):
+def check_overhangs(tris):
     """Downward-facing patches above the bed, grouped by shared vertices."""
-    tris = read_stl(path)
     bed = min(p[2] for t in tris for p in t)
     key = lambda p: tuple(round(c, 4) for c in p)
-    down = []
-    for t in tris:
-        n = normal(t)
-        if n and n[2] < OVERHANG_NZ and min(p[2] for p in t) > bed + 0.05:
-            down.append((t, n))
+    down = [(t, n) for t in tris for n in [normal(t)]
+            if n and n[2] < OVERHANG_NZ and min(p[2] for p in t) > bed + 0.05]
     parent = list(range(len(down)))
 
     def find(i):
@@ -164,44 +143,56 @@ def check_overhangs(path):
         groups.setdefault(find(i), []).append(down[i])
     report, errors = [], []
     for g in groups.values():
+        # Bridge span: the bbox's short side overstates thin rings (a groove
+        # round the whole head), so also estimate width as 4 * area / perimeter.
+        ec = Counter()
+        for t, _ in g:
+            a, b, c = (key(p) for p in t)
+            for e in ((a, b), (b, c), (c, a)):
+                ec[tuple(sorted(e))] += 1
+        perim = sum(((e[0][0] - e[1][0]) ** 2 + (e[0][1] - e[1][1]) ** 2) ** 0.5
+                    for e, n in ec.items() if n == 1)
         xs = [p[0] for t, _ in g for p in t]
         ys = [p[1] for t, _ in g for p in t]
         zs = [p[2] for t, _ in g for p in t]
         area = sum(n[3] for _, n in g)
         flat = all(n[2] < -0.999 for _, n in g)
         dx, dy = max(xs) - min(xs), max(ys) - min(ys)
-        kind = "bridge" if flat else "overhang"
-        line = f"{kind:8s} z={min(zs) - bed:5.2f}  {dx:5.1f} x {dy:5.1f} mm  area {area:6.1f} mm2"
+        line = (f"{'bridge' if flat else 'overhang':8s} z={min(zs) - bed:5.2f}  "
+                f"{dx:5.1f} x {dy:5.1f} mm  area {area:6.1f} mm2")
         if not flat and area > 1.0:
             errors.append(line + "  <- needs support")
-        elif flat and min(dx, dy) > MAX_BRIDGE:
+        elif flat and min(dx, dy, 4 * area / perim if perim else 0) > MAX_BRIDGE:
             errors.append(line + f"  <- bridge over {MAX_BRIDGE} mm")
-        report.append(line)
-    return report, errors
+        report.append((max(dx, dy), line))
+    report.sort(reverse=True)
+    return [l for _, l in report], errors
 
 
 def main():
     tol = read_tol()
-    comps, cavity, lip, corners = parse_echo(sys.argv[1])
+    echo, scad, stls = sys.argv[1], sys.argv[2], sys.argv[3:]
+    comps = parse_echo(echo)
     ok = True
-    errs = check_clearance(comps, cavity, lip, tol) + check_corners(comps, cavity, corners, tol)
-    print(f"clearance: {len(comps)} parts, tol {tol} mm, cavity {cavity[1]}")
+
+    errs = check_probes(comps, scad) + check_pairs(comps, tol)
+    print(f"fit: {len(comps)} parts, tol {tol} mm, checked in 3D against body, plate and spacers")
     for e in errs:
         print("  FAIL", e)
     if not errs:
-        print("  OK: every part has >= tol to walls, lid and each other")
+        print("  OK: every part clears every printed solid and every other part")
     ok &= not errs
-    for stl in sys.argv[2:]:
-        n, bad, deg = check_watertight(stl)
-        status = "OK watertight" if n and not bad and not deg else "FAIL"
-        print(f"{stl}: {n} triangles, {bad} open/non-manifold edges, {deg} degenerate -> {status}")
-        ok &= status.startswith("OK")
-        report, errs = check_overhangs(stl)
-        print(f"  printability: {len(report)} downward patches above the bed, "
-              f"{'OK' if not errs else 'FAIL'}")
-        for line in (errs or report)[:12]:
+
+    for stl in stls:
+        tris = read_stl(stl)
+        bad, deg = check_watertight(tris)
+        report, oerrs = check_overhangs(tris)
+        good = tris and not bad and not deg and not oerrs
+        print(f"{stl}: {len(tris)} triangles, {bad} open edges, {deg} degenerate, "
+              f"{len(report)} downward patches -> {'OK' if good else 'FAIL'}")
+        for line in (oerrs or report[:3]):
             print("   ", line)
-        ok &= not errs
+        ok &= bool(good)
     sys.exit(0 if ok else 1)
 
 

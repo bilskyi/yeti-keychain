@@ -1,6 +1,6 @@
 #!/bin/sh
-# Exports every printable part to STL, renders PNG previews, then checks
-# clearances and watertightness. Output goes to case/out/.
+# Exports every printable part to STL (in print orientation), renders the
+# previews, then runs every check. Output goes to case/out/.
 #
 #   cd case && ./build.sh
 set -e
@@ -9,24 +9,21 @@ OUT=out
 mkdir -p "$OUT"
 SCAD=keychain_case.scad
 OS="openscad --backend=manifold"
+IMG="--render --colorscheme=Tomorrow --viewall --autocenter"
 
-for p in shell lid caps key; do
+for p in body plate caps key spacers; do
     $OS -D "part=\"$p\"" --export-format asciistl -o "$OUT/$p.stl" "$SCAD"
 done
 
-# Echo of the part layout, for the clearance check.
+# Layout echo for the fit check.
 $OS -D 'part="assembly"' -o "$OUT/layout.echo" "$SCAD"
 
-# Previews: front face, inside (from the open back), and the cut-away assembly.
-$OS -D 'part="shell"' --render --imgsize=900,700 --colorscheme=Tomorrow \
-    --camera=20,22,10,0,0,0,140 -o "$OUT/shell_inside.png" "$SCAD"
-$OS -D 'part="shell"' --render --imgsize=900,700 --colorscheme=Tomorrow \
-    --camera=0,0,0,0,180,0,0 --viewall --autocenter -o "$OUT/shell_front.png" "$SCAD"
-$OS -D 'part="assembly"' --render --imgsize=900,700 --colorscheme=Tomorrow \
-    --camera=18,22,14,75,0,60,150 -o "$OUT/assembly_cutaway.png" "$SCAD"
-$OS -D 'part="back"' --render --imgsize=900,700 --colorscheme=Tomorrow \
-    --camera=0,0,0,0,0,0,0 --viewall --autocenter -o "$OUT/back.png" "$SCAD"
-$OS -D 'part="hero"' --render --imgsize=1000,1000 --colorscheme=Tomorrow \
-    --camera=0,0,0,-15,200,0,0 --viewall --autocenter -o "$OUT/hero.png" "$SCAD"
+# Previews (+X points left when seen from the front, hence the 180).
+$OS -D 'part="hero"'     $IMG --imgsize=1000,1000 --camera=0,0,0,-15,200,0,0 -o "$OUT/hero.png" "$SCAD"
+$OS -D 'part="front"'    $IMG --imgsize=900,900   --camera=0,0,0,0,180,0,0   -o "$OUT/front.png" "$SCAD"
+$OS -D 'part="back"'     $IMG --imgsize=900,900   --camera=0,0,0,0,0,0,0     -o "$OUT/back.png" "$SCAD"
+$OS -D 'part="hero"'     $IMG --imgsize=900,900   --camera=0,0,0,-20,250,0,0 -o "$OUT/side.png" "$SCAD"
+$OS -D 'part="assembly"' $IMG --imgsize=900,900   --camera=0,0,0,70,0,60,0   -o "$OUT/assembly_cutaway.png" "$SCAD"
 
-python3 -I check.py "$OUT/layout.echo" "$OUT/shell.stl" "$OUT/lid.stl" "$OUT/caps.stl" "$OUT/key.stl"
+python3 -I check.py "$OUT/layout.echo" "$SCAD" \
+    "$OUT/body.stl" "$OUT/plate.stl" "$OUT/caps.stl" "$OUT/key.stl" "$OUT/spacers.stl"

@@ -54,9 +54,17 @@
   printability (overhangs / bridges from the STLs); verified to fail on bad
   geometry. All checks pass.
 
+- 2026-10-23 Boltik v1 rejected ("too flat, few details, too sharp"): limbs
+  were flat because the shell printed face down. **Boltik v2**: body prints
+  back down + separate face plate prints face up, so all visible surfaces
+  are round/raised; pill-profile limbs, raised bezel/rivets/bandage/blush/
+  text, 2x M2 screws via OLED top holes into bosses, spacers. check.py fit
+  check is now real 3D (OpenSCAD intersection probes). All checks pass with
+  no relaxations; each check shown to fail on broken input.
+
 ## In progress
-- Case: waiting for Sasha's verdict on Boltik, then caliper measurements to
-  replace PLACEHOLDER values.
+- Case: waiting for Sasha's verdict on Boltik v2, then caliper measurements
+  to replace PLACEHOLDER values.
 
 ## Next
 - Phase 2 (stubs): flesh out button + LIS3DH placeholders with TODOs and the
