@@ -22,3 +22,7 @@ CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
 # Brownout detector stays on (default level). main.c checks the reset reason
 # and shows the low-battery face instead of boot-looping.
 CONFIG_ESP_BROWNOUT_DET=y
+
+# The Super Mini carries 4 MB (the boot log detects it); the default 2 MB
+# header just hides the other half.
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y

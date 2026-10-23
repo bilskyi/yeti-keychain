@@ -33,9 +33,13 @@
   - default image 222,880 B (flash code 116.8 KB, rodata 43.8 KB),
     DRAM 67.7 KB / 321 KB (21 %).
 
+- 2026-10-23 **Phase 1 confirmed on hardware** (OLED only, USB power): boot log
+  `display: SH1106 at 0x3C`, Sasha sees the face. SH1106 confirmed, no shift.
+  Not yet checked on hardware: battery power path, light-sleep current.
+- Flash size set to 4 MB (boot log detected 4 MB on the Super Mini).
+
 ## In progress
-- Waiting for Sasha to flash and confirm on hardware. **Nothing visual is
-  verified on a real panel yet.**
+- Nothing. Waiting for Sasha to pick the next phase.
 
 ## Next
 - Phase 2 (stubs): flesh out button + LIS3DH placeholders with TODOs and the
@@ -45,5 +49,4 @@
 ## Open questions
 - LiPo capacity / size still placeholders (`{CAPACITY}`, `{SIZE}`). Needed for
   Phase 3 and the battery % curve; not for v0.1.
-- Which panel controller (SH1106 assumed) is confirmed on first flash.
 - Super Mini power LED: always-on, drains the cell even in deep sleep. Remove it?
