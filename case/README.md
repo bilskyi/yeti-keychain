@@ -1,6 +1,6 @@
-# Case (v0, placeholder dimensions)
+# Case: robot head (v1, placeholder dimensions)
 
-Parametric OpenSCAD model: shell + back lid + button caps.
+Parametric OpenSCAD model in robot-head style: shell, back lid and button caps.
 **Every part size in `params.scad` marked `PLACEHOLDER` is a typical value,
 not a measurement.** Measure your parts and replace them before a real print.
 
@@ -15,21 +15,25 @@ stable cask is disabled in Homebrew because it fails Gatekeeper).
 
 | | |
 |---|---|
-| Front | screen window (chamfered), 1–3 button holes below it (`n_buttons`) |
-| Bottom | two USB-C cut-outs: Super Mini (flashing) and TP4056 (charging) |
-| Right side | slide-switch slot |
-| Top | keyring loop |
-| Back | lid, friction-fit lip |
+| Front | screen in a recessed visor, 1–3 buttons in an engraved panel below it (`n_buttons`), engraved rivets in the corners |
+| Top | antenna, which is the keyring loop |
+| Sides | hex-bolt "ears", vent grooves low down |
+| Left side (looking at the screen) | slide-switch slot, behind the ear |
+| Bottom | two USB-C cut-outs: TP4056 (charging, left) and Super Mini (flashing, right), seen from the front |
+| Back | lid with an engraved `KC-01` serial plate, friction-fit lip |
+
+All of the front detail is engraved, never raised, because the shell prints
+face down. The antenna and ears start on the print bed, so no supports are needed.
 
 Inside, front to back: OLED and buttons → Super Mini + TP4056 → battery +
 switch → (LIS3DH, if `accel_pocket = true`) → lid.
 
-Current outer size with placeholders: **39.6 × 45.3 × 21.6 mm** plus the loop.
+Size with placeholders: head **39.6 × 45.3 × 21.6 mm**; ~46 mm wide across the ears, ~59 mm tall to the top of the antenna.
 
 ## Printing
 
-- `shell.stl`: print **face down** (the front face on the bed). No supports
-  needed except possibly the USB-C cut-outs' top edge (small bridges).
+- `shell.stl`: print **face down** (the front face on the bed). No supports;
+  the USB-C cut-outs' top edges and the ears' undersides are short bridges/overhangs.
 - `lid.stl`: plate down.
 - `caps.stl`: flange down. Print a spare or two; they are tiny.
 - PLA or PETG, 0.2 mm layers. If the lid is too tight or loose, change `tol`.

@@ -1,12 +1,15 @@
-// OLED keychain case: shell (front + walls), back lid, button caps.
+// OLED keychain case, robot-head style: shell (front + walls), back lid,
+// button caps.
 //
 //   openscad -D 'part="shell"' -o shell.stl keychain_case.scad
 //   part = shell | lid | caps | assembly (cut-away with every part shown)
 //
 // Layout, front to back:
 //   layer 1  OLED (glass against the front face) + buttons in a row below it
-//   layer 2  Super Mini (left) and TP4056 (right), USB-C ports out the bottom
-//   layer 3  LiPo (left) and slide switch (right, lever out the right wall)
+//   layer 2  Super Mini (low X) and TP4056 (high X), USB-C ports out the bottom
+//   layer 3  LiPo (low X) and slide switch (high X wall)
+//   Seen from the front, high X is on the LEFT: the switch is on the left
+//   side as you look at the screen.
 //   layer 4  LIS3DH breakout, only with accel_pocket = true
 //   then the lid's lip, then the lid.
 //
@@ -91,11 +94,6 @@ if (accel_pocket)
          [(ix + accel_pcb.x) / 2, (iy + accel_pcb.y) / 2, l4_z + l4_h]);
 
 // ------------------------------------------------------------ geometry ----
-module rounded_box(mn, mx, r) {
-    hull() for (x = [mn.x + r, mx.x - r], y = [mn.y + r, mx.y - r])
-        translate([x, y, mn.z]) cylinder(r = r, h = mx.z - mn.z);
-}
-
 // USB-C cut-out through the bottom wall, centred on a board's receptacle.
 module usb_cutout(board_x, board_w, board_z, pcb_t) {
     cx = board_x + board_w / 2;
@@ -108,16 +106,94 @@ module usb_cutout(board_x, board_w, board_z, pcb_t) {
         cube([usbc_plug.x + 2 * tol, usbc_plug_recess + 2, usbc_plug.y + 2 * tol], center = true);
 }
 
-module keyring_tab() {
-    cx = -wall + corner_r + ring_outer_d / 2;
-    cy = iy + wall + ring_outer_d / 2 - 1;
-    difference() {
-        hull() {
-            translate([cx, cy, -front]) cylinder(d = ring_outer_d, h = ring_t);
-            translate([cx - ring_outer_d / 2, iy, -front]) cube([ring_outer_d, wall, ring_t]);
-        }
-        translate([cx, cy, -front - 1]) cylinder(d = ring_hole_d, h = ring_t + 2);
+// ------------------------------------------------------------ robot style --
+// Head outline: a rectangle with cut corners.
+module head_2d(inset = 0) {
+    x0 = outer_min.x + inset; y0 = outer_min.y + inset;
+    x1 = outer_max.x - inset; y1 = outer_max.y - inset;
+    c = head_chamfer;
+    polygon([[x0 + c, y0], [x1 - c, y0], [x1, y0 + c], [x1, y1 - c],
+             [x1 - c, y1], [x0 + c, y1], [x0, y1 - c], [x0, y0 + c]]);
+}
+
+// Wall left at a cut corner, measured diagonally to the cavity's corner.
+corner_wall = (wall + wall - head_chamfer) / sqrt(2);
+assert(corner_wall >= 1.0, str("head_chamfer leaves only ", corner_wall, " mm of wall at the corners"));
+
+module head_body(z0, z1, bevel_front = true) {
+    b = bevel_front ? face_bevel : 0;
+    hull() {
+        translate([0, 0, z0]) linear_extrude(0.01) head_2d(b);
+        translate([0, 0, z0 + b]) linear_extrude(z1 - z0 - b) head_2d();
     }
+}
+
+// Antenna on top, which is also the keyring loop. Flat on the bed (front
+// face down), so it prints without supports.
+ant_ring_cy = outer_max.y + ant_stalk_h + ring_outer_d / 2;
+module antenna() {
+    cx = ix / 2;
+    difference() {
+        union() {
+            // collar narrowing into the stalk, one outline so the two never
+            // share an edge (shared edges leave sliver triangles in the STL)
+            translate([0, 0, -front]) linear_extrude(ant_t) polygon([
+                [cx - ant_base_w / 2, outer_max.y - 0.5], [cx + ant_base_w / 2, outer_max.y - 0.5],
+                [cx + ant_stalk_w / 2, outer_max.y + 1.5], [cx + ant_stalk_w / 2, ant_ring_cy],
+                [cx - ant_stalk_w / 2, ant_ring_cy], [cx - ant_stalk_w / 2, outer_max.y + 1.5]]);
+            translate([cx, ant_ring_cy, -front]) cylinder(d = ring_outer_d, h = ant_t);
+        }
+        translate([cx, ant_ring_cy, -front - 1]) cylinder(d = ring_hole_d, h = ant_t + 2);
+    }
+}
+
+// Bolt "ears": a round boss with a hex nut, on both sides, sitting on the bed.
+ear_y  = oled_y + oled_pcb.y / 2;
+ear_cz = -front + ear_d / 2;
+module ears() {
+    for (side = [-1, 1]) {
+        x_wall = side < 0 ? outer_min.x : outer_max.x;
+        translate([x_wall, ear_y, ear_cz]) rotate([0, side * 90, 0]) {
+            translate([0, 0, -0.5]) cylinder(d = ear_d, h = ear_len + 0.5);
+            translate([0, 0, ear_len]) rotate([0, 0, 30]) cylinder(d = ear_hex_d, h = ear_hex_len, $fn = 6);
+        }
+    }
+}
+// The right ear must stay clear of the switch slot behind it.
+sw_slot_z0 = l3_z + sw_body.z / 2 - sw_lever.z / 2 - tol;
+assert(ear_cz + ear_d / 2 + 1 <= sw_slot_z0, "right ear runs into the switch slot");
+
+// Vent grooves along the depth of both side walls, low down.
+vent_y0 = 3;
+module vents() {
+    for (side = [0, 1], i = [0 : vent_n - 1]) {
+        x = side == 0 ? outer_min.x - 1 : outer_max.x - vent_depth;
+        translate([x, vent_y0 + i * vent_pitch, l2_z])
+            cube([vent_depth + 1, vent_w, iz - l2_z - 2]);
+    }
+}
+assert(vent_y0 + vent_n * vent_pitch < sw_y, "vents run into the switch slot");
+
+// Front-face engravings, all cut into the face from the outside.
+module face_engravings() {
+    // recessed visor round the screen window
+    translate([view_x - visor_margin, view_y - visor_margin, -front - 1])
+        cube([oled_view.x + 2 * visor_margin, oled_view.y + 2 * visor_margin, 1 + engrave]);
+    // panel line round the buttons
+    if (n_buttons > 0) {
+        w = (n_buttons - 1) * btn_pitch + flange_d + 3;
+        h = flange_d + 1;
+        translate([ix / 2 - w / 2, btn_y - h / 2, -front - 1]) difference() {
+            cube([w, h, 1 + engrave]);
+            translate([panel_groove, panel_groove, -1]) cube([w - 2 * panel_groove, h - 2 * panel_groove, 3 + engrave]);
+        }
+    }
+    // rivets in the four face corners
+    for (x = [outer_min.x + 3, outer_max.x - 3], y = [outer_min.y + 3, outer_max.y - 3])
+        translate([x, y, -front - 1]) difference() {
+            cylinder(d = rivet_d, h = 1 + engrave);
+            translate([0, 0, -1]) cylinder(d = rivet_d - 1.0, h = 3 + engrave);
+        }
 }
 
 // Pegs into the OLED's mounting holes; the stand-offs carry the PCB at the
@@ -134,9 +210,12 @@ module oled_pegs() {
 module shell() {
     difference() {
         union() {
-            rounded_box(outer_min, outer_max, corner_r);
-            keyring_tab();
+            head_body(outer_min.z, outer_max.z);
+            antenna();
+            ears();
         }
+        vents();
+        face_engravings();
         translate([0, 0, 0]) cube([ix, iy, iz + 1]);
         // screen window, with a 45-degree chamfer outward so the bezel does
         // not shade the edge pixels
@@ -159,7 +238,13 @@ module shell() {
 
 module lid() {
     lip_w = 1.2;
-    rounded_box([outer_min.x, outer_min.y, iz], [outer_max.x, outer_max.y, iz + lid_t], corner_r);
+    difference() {
+        translate([0, 0, iz]) linear_extrude(lid_t) head_2d();
+        // serial plate on the back of the head
+        translate([ix / 2, iy / 2, iz + lid_t - engrave]) linear_extrude(1)
+            text(lid_label, size = lid_label_size, halign = "center", valign = "center",
+                 font = "Liberation Mono:style=Bold");
+    }
     translate([0, 0, iz - lip_h]) difference() {
         translate([tol, tol, 0]) cube([ix - 2 * tol, iy - 2 * tol, lip_h]);
         translate([tol + lip_w, tol + lip_w, -1]) cube([ix - 2 * (tol + lip_w), iy - 2 * (tol + lip_w), lip_h + 2]);
@@ -199,4 +284,5 @@ module assembly() {
 if (part == "shell") shell();
 else if (part == "lid") translate([0, 0, iz + lid_t]) rotate([180, 0, 0]) lid();  // plate down
 else if (part == "caps") caps_for_print();
+else if (part == "back") { shell(); lid(); }   // preview: closed, seen from behind
 else assembly();

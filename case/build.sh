@@ -21,10 +21,10 @@ $OS -D 'part="assembly"' -o "$OUT/layout.echo" "$SCAD"
 $OS -D 'part="shell"' --render --imgsize=900,700 --colorscheme=Tomorrow \
     --camera=20,22,10,0,0,0,140 -o "$OUT/shell_inside.png" "$SCAD"
 $OS -D 'part="shell"' --render --imgsize=900,700 --colorscheme=Tomorrow \
-    --camera=20,22,10,180,0,0,140 -o "$OUT/shell_front.png" "$SCAD"
+    --camera=20,24,10,0,180,0,150 -o "$OUT/shell_front.png" "$SCAD"
 $OS -D 'part="assembly"' --render --imgsize=900,700 --colorscheme=Tomorrow \
     --camera=18,22,14,75,0,60,150 -o "$OUT/assembly_cutaway.png" "$SCAD"
-$OS -D 'part="lid"' --render --imgsize=700,500 --colorscheme=Tomorrow \
-    --viewall --autocenter -o "$OUT/lid.png" "$SCAD"
+$OS -D 'part="back"' --render --imgsize=900,700 --colorscheme=Tomorrow \
+    --camera=20,24,10,0,0,0,150 -o "$OUT/back.png" "$SCAD"
 
 python3 -I check.py "$OUT/layout.echo" "$OUT/shell.stl" "$OUT/lid.stl" "$OUT/caps.stl"

@@ -38,7 +38,7 @@
   Not yet checked on hardware: battery power path, light-sleep current.
 - Flash size set to 4 MB (boot log detected 4 MB on the Super Mini).
 
-- 2026-10-23 **Phase 3 v0 (case), placeholder dimensions**: `case/` OpenSCAD
+- 2026-10-23 **Phase 3 v0 (case), placeholder dimensions**; restyled as a **robot head** at Sasha's request (antenna = loop, bolt ears, visor, engraved panel + rivets, vents, KC-01 lid): `case/` OpenSCAD
   model (params.scad / keychain_case.scad), shell + lid + caps STLs, PNG
   previews, check.py (clearance >= tol + watertight), all pass; check verified
   to fail on an overlapping layout. Outer 39.6 x 45.3 x 21.6 mm. Buttons:

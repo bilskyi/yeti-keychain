@@ -3,8 +3,10 @@
 // "PLACEHOLDER" = a typical value for that kind of part, NOT measured on
 // Sasha's parts. Replace each with a caliper reading before printing for real.
 //
-// Axes (looking at the screen): X = width, left -> right; Y = height,
-// bottom -> top; Z = depth, front face -> back. The cavity's inner
+// Axes: X = width, Y = height (bottom -> top), Z = depth (front face -> back).
+// Careful: seen from the FRONT, +X points to your LEFT (seen from the back,
+// to your right). "Left"/"right" in comments below mean model X, i.e. as
+// seen from the back with the lid off, which is how you assemble it. The cavity's inner
 // front-bottom-left corner is the origin.
 
 // ---- print / fit -----------------------------------------------------------
@@ -13,7 +15,6 @@ wall   = 1.6;   // side walls
 front  = 1.6;   // front face (in front of the screen)
 lid_t  = 1.6;   // back lid plate
 lip_h  = 2.0;   // lid lip that pushes into the shell (friction fit)
-corner_r = 3.0; // outer corner radius
 $fn = 48;
 
 // ---- feature toggles -------------------------------------------------------
@@ -67,10 +68,40 @@ flange_t     = 0.8;
 // ---- LIS3DH breakout (optional) --------------------------------------------
 accel_pcb = [18.0, 21.0, 1.6];      // PLACEHOLDER  Adafruit-style breakout
 
-// ---- keyring loop -----------------------------------------------------------
+// ---- style: robot head ------------------------------------------------------
+// The shell prints face down, so nothing may stand proud of the front face:
+// all front detail is engraved, and everything that sticks out sideways
+// (antenna, ears) starts on the print bed.
+head_chamfer = 1.5;    // cut corners of the head outline (limited by wall at the corner)
+face_bevel   = 0.8;    // bevel round the front edge
+engrave      = 0.5;    // depth of front-face engravings
+visor_margin = 2.5;    // recessed visor round the screen window
+panel_groove = 0.8;    // width of the panel line round the buttons
+rivet_d      = 2.4;    // engraved rivet rings in the face corners
+
+// antenna on top = keyring loop
+ant_t        = 4.0;    // thickness (Z), flat on the bed
+ant_base_w   = 12.0;   // collar where it meets the head
+ant_stalk_w  = 4.5;
+ant_stalk_h  = 4.0;
 ring_outer_d = 10.0;
 ring_hole_d  = 4.5;
-ring_t       = 3.0;                 // thickness (Z), flush with the front face
+
+// bolt "ears" on both sides
+ear_d     = 8.0;
+ear_len   = 2.0;       // round boss
+ear_hex_d = 5.2;       // hex nut on the boss (across corners)
+ear_hex_len = 1.4;
+
+// side vents (grooves, not holes)
+vent_n     = 3;
+vent_w     = 1.0;
+vent_pitch = 2.6;
+vent_depth = 0.6;
+
+// lid
+lid_label = "KC-01";
+lid_label_size = 5;
 
 // ---- gaps between internal layers ------------------------------------------
 layer_gap = 0.5;
