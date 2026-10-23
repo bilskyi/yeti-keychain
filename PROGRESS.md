@@ -62,8 +62,16 @@
   check is now real 3D (OpenSCAD intersection probes). All checks pass with
   no relaxations; each check shown to fail on broken input.
 
+- 2026-10-23 v2 rejected: limbs stuck to the back (not centred), legs ugly,
+  "how will it stand -> make it sit". **Boltik v3**: arms/ears are separate
+  teardrop-profile parts on M2 screws at mid-depth (arms posable), legs are
+  separate, pinned to the face plate with filament, stretched forward: it
+  sits. Keyring = thick ring on top (part of body). Switch moved to the back.
+  All checks pass (10 STLs). Found and fixed by checks: switch well vs back
+  text, arm reach vs desk, joint bosses printed point-up (overhang).
+
 ## In progress
-- Case: waiting for Sasha's verdict on Boltik v2, then caliper measurements
+- Case: waiting for Sasha's verdict on Boltik v3, then caliper measurements
   to replace PLACEHOLDER values.
 
 ## Next

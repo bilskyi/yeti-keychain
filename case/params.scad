@@ -51,7 +51,7 @@ batt = [20.0, 33.0, 6.0];           // PLACEHOLDER  w, length incl. protection P
 sw_body   = [3.6, 8.6, 3.5];        // PLACEHOLDER  X (width), Y (length), Z (height)
 sw_lever  = [2.0, 1.5, 1.5];        // PLACEHOLDER  X (sticks out), Y, Z
 sw_travel = 2.0;                    // PLACEHOLDER
-sw_center_y = 21.5;                 // between the hanging arm and the bolt ear
+sw_center_y = 8.0;                  // on the back, low down, clear of the text
 
 // ---- 6x6 tactile buttons ---------------------------------------------------
 btn_body   = [6.0, 6.0];            // 6x6 (Sasha)
@@ -78,44 +78,55 @@ boss_d        = 4.4;
 lip_w         = 1.0;                // body lip that keys into the plate's groove
 lip_h         = 1.0;
 
-// ---- style: "Boltik", a goofy robot -----------------------------------------
-// The body prints BACK DOWN, the face plate prints FACE UP. So everything the
-// viewer sees grows upward on the printer and can be round; only the back is
-// flat. Every limb is a "pill": flat on the back, rounded toward the front.
-min_feature = 3.0;    // smallest load-carrying width (limbs, antenna, loop)
+// ---- style: "Boltik" v3, a goofy robot that sits ----------------------------
+// Body prints BACK DOWN, face plate prints FACE UP: everything the viewer
+// sees grows upward on the printer and can be round. Arms, ears and legs are
+// separate parts printed flat with a "teardrop" profile (round everywhere
+// except a flat strip on the side that touches the body / the desk), and
+// fixed at mid-depth of the head, so they sit centred, not stuck on the back.
+min_feature = 3.0;    // smallest load-carrying width
 detail_h    = 0.8;    // height of raised details on the face plate
 engrave     = 0.5;
 engrave_w   = 0.7;
 
 // head: bigger than the parts need, on purpose (big head, tiny body)
-head_pad_x   = 2.5;
+head_pad_x   = 2.5;   // also where the arm/ear screw bosses live
 head_pad_top = 3.0;
 r_top        = 8.0;   // inner corner radius at the top: a round, bonk-able head
-r_bot        = 1.5;   // inner corner radius at the bottom (USB ports sit flush)
+r_bot        = 1.5;   // inner corner radius at the bottom (it sits on this)
 back_chamfer = 1.2;   // 45-degree chamfer on the bed edge (a round there would overhang)
 front_round  = 1.6;   // rounded top edge of the face plate
 
-// limbs (depth = how far they reach forward from the back)
-limb_depth  = 15;
-arm_r       = 2.7;    // arm radius
-elbow_r     = 3.6;
-hand_r      = 4.0;
-arm_y       = 13;     // where the arms leave the head
-leg_r       = 3.0;
-leg_len     = 5.5;
-boot        = [10.0, 4.0];  // boot length, boot radius
+// joints: arms and ears hang on M2 screws into bosses in the head's side walls
+joint_screw_len = 10; // M2 x 10
+joint_boss_r    = 3.0;
+arm_y       = 17;     // shoulder height
+ear_y_frac  = 0.74;
 
-// antenna: crooked stalk with a ball, keyring loop on top
-ant_r       = 1.9;
-ant_ball_r  = 3.2;
-loop_outer_d = 11.0;
-loop_hole_d  = 4.8;
-loop_depth   = 9.0;
+// arm (one part per side, mirror images)
+shoulder_r  = 4.2;
+arm_r       = 2.7;
+elbow_r     = 3.3;
+hand_r      = 3.9;
+thumb_r     = 1.8;
 
 // ears
-ear_y_frac  = 0.72;
-dish_r      = 5.5;
-bolt_d      = 8.0;
+dish_r      = 6.0;
+bolt_d      = 9.0;
+
+// legs: stretched out forward on the desk, pinned to the face plate with
+// two bits of 1.75 mm filament each
+leg_r       = 3.0;
+leg_len     = 11;
+boot_r      = 3.7;
+toe_r       = 2.7;
+leg_inset   = 3.4;    // leg centre from the cavity side
+pin_d       = 1.75;   // filament
+pin_fit     = 0.1;
+pin_len     = 6;
+
+// keyring loop on top of the head (part of the body, so it is strong)
+handle_hole_r = 2.6;
 
 // face plate details
 bezel_w     = 2.6;    // raised rim round the screen
