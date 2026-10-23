@@ -1,20 +1,20 @@
-// OLED keychain case, robot-head style: shell (front + walls), back lid,
-// button caps.
+// "Boltik": the OLED keychain as a goofy little robot. Shell (head, with the
+// limbs, ears and antenna on it), back lid, button caps, wind-up key.
 //
 //   openscad -D 'part="shell"' -o shell.stl keychain_case.scad
-//   part = shell | lid | caps | assembly (cut-away with every part shown)
+//   part = shell | lid | caps | key | assembly (cut-away) | back (closed, from behind) | hero (colour portrait)
 //
-// Layout, front to back:
+// Layout inside the head, front to back:
 //   layer 1  OLED (glass against the front face) + buttons in a row below it
 //   layer 2  Super Mini (low X) and TP4056 (high X), USB-C ports out the bottom
 //   layer 3  LiPo (low X) and slide switch (high X wall)
-//   Seen from the front, high X is on the LEFT: the switch is on the left
-//   side as you look at the screen.
 //   layer 4  LIS3DH breakout, only with accel_pocket = true
 //   then the lid's lip, then the lid.
+// Seen from the FRONT, high X is on the LEFT.
 //
-// Every internal part is echoed as "COMP|name|[min]|[max]|flush" so
-// check.py can verify the gaps; nothing here is checked by eye.
+// Every internal part is echoed as "COMP|name|[min]|[max]|flush" and the
+// cavity's corner radii as "CORNERS|r_bot|r_top", so check.py can verify
+// the gaps; nothing here is checked by eye.
 
 include <params.scad>
 
@@ -24,15 +24,19 @@ part = "assembly";
 btn_zone_h = n_buttons > 0 ? btn_body.y + 2 * btn_margin : 0;
 usb_len    = usbc_overhang;
 
-ix = max(oled_pcb.x,
-         mini_pcb.x + tol + tp_pcb.x,
-         batt.x + tol + sw_body.x,
-         n_buttons * btn_pitch,
-         accel_pocket ? accel_pcb.x : 0) + 2 * tol;
-iy = max(btn_zone_h + oled_pcb.y,
-         usb_len + max(mini_pcb.y, tp_pcb.y),
-         batt.y,
-         accel_pocket ? accel_pcb.y : 0) + 2 * tol;
+// Size the parts need, then the deliberate big-head padding.
+need_x = max(oled_pcb.x,
+             mini_pcb.x + tol + tp_pcb.x,
+             batt.x + tol + sw_body.x,
+             n_buttons * btn_pitch,
+             accel_pocket ? accel_pcb.x : 0) + 2 * tol;
+need_y = max(btn_zone_h + oled_pcb.y,
+             usb_len + max(mini_pcb.y, tp_pcb.y),
+             batt.y,
+             accel_pocket ? accel_pcb.y : 0) + 2 * tol;
+px = head_pad_x;
+ix = need_x + 2 * px;
+iy = need_y + head_pad_top;
 
 // Z stack
 oled_back = oled_glass.z + oled_pcb.z + oled_wire_clear;
@@ -42,11 +46,11 @@ l2_h = max(mini_pcb.z + mini_comp_h, tp_pcb.z + tp_comp_h);
 l3_z = l2_z + l2_h + layer_gap;
 l3_h = max(batt.z, sw_body.z);
 l4_z = l3_z + l3_h + layer_gap;
-l4_h = accel_pocket ? accel_pcb.z + 3 : 0;   // breakout + header room
+l4_h = accel_pocket ? accel_pcb.z + 3 : 0;
 parts_back = accel_pocket ? l4_z + l4_h : l3_z + l3_h;
-iz = parts_back + tol + lip_h;                // the lid lip sits behind every part
+iz = parts_back + tol + lip_h;
 
-// XY placement
+// XY placement (everything is shifted px in from the sides)
 oled_x = (ix - oled_pcb.x) / 2;
 oled_y = tol + btn_zone_h;
 glass_x = oled_x + oled_glass_off.x;
@@ -54,27 +58,29 @@ glass_y = oled_y + oled_glass_off.y;
 view_x = glass_x + oled_view_off.x;
 view_y = glass_y + oled_view_off.y;
 
-mini_x = tol;
+mini_x = px + tol;
 mini_y = tol + usb_len;
-tp_x = ix - tol - tp_pcb.x;
+tp_x = ix - px - tol - tp_pcb.x;
 tp_y = tol + usb_len;
 
-batt_x = tol;
-batt_y = (iy - batt.y) / 2;
-sw_x = ix - sw_body.x;            // flush against the right wall (lever goes through)
-sw_y = iy * 0.6 - sw_body.y / 2;
+batt_x = px + tol;
+batt_y = (need_y - batt.y) / 2;
+sw_x = ix - sw_body.x;            // flush against the high-X wall (lever goes through)
+sw_y = need_y * 0.6 - sw_body.y / 2;
 
 btn_y = tol + btn_zone_h / 2;
 function btn_x(i) = ix / 2 + (i - (n_buttons - 1) / 2) * btn_pitch;
 
 outer_min = [-wall, -wall, -front];
 outer_max = [ix + wall, iy + wall, iz];
+face_z = -front;                  // the print bed
 
 // ------------------------------------------------------- report for check --
 module comp(name, mn, mx, flush = "") {
     echo(str("COMP|", name, "|", mn, "|", mx, "|", flush));
 }
 echo(str("CAVITY|", [0, 0, 0], "|", [ix, iy, iz]));
+echo(str("CORNERS|", r_bot, "|", r_top));
 echo(str("OUTER|", outer_max - outer_min));
 echo(str("LIP|", iz - lip_h));
 
@@ -93,111 +99,138 @@ if (accel_pocket)
     comp("lis3dh", [(ix - accel_pcb.x) / 2, (iy - accel_pcb.y) / 2, l4_z],
          [(ix + accel_pcb.x) / 2, (iy + accel_pcb.y) / 2, l4_z + l4_h]);
 
+// --------------------------------------------------------- design rules --
+assert(app_t >= min_feature, "limbs thinner than min_feature");
+assert(min(ant_w, arm_w, leg_w) >= min_feature, "a limb or the antenna is below min_feature wide");
+assert((ring_outer_d - ring_hole_d) / 2 >= min_feature, "keyring loop wall below min_feature");
+assert(engrave_w >= 0.6, "engraved lines under 0.6 mm will not print");
+assert(r_top <= min(ix, iy) / 2 && r_bot <= min(ix, iy) / 2, "corner radius larger than the head");
+
 // ------------------------------------------------------------ geometry ----
+// Cavity outline: rounded rectangle, big radius on top, small at the bottom.
+module cavity_2d() {
+    hull() {
+        for (x = [r_bot, ix - r_bot]) translate([x, r_bot]) circle(r = r_bot);
+        for (x = [r_top, ix - r_top]) translate([x, iy - r_top]) circle(r = r_top);
+    }
+}
+// Head outline = cavity grown by the wall, so the wall is even all round.
+module head_2d() { offset(r = wall) cavity_2d(); }
+
+// A flat "noodle" through a list of points, lying on the bed.
+module noodle(pts, w) {
+    linear_extrude(app_t) for (i = [0 : len(pts) - 2]) hull() {
+        translate(pts[i]) circle(d = w);
+        translate(pts[i + 1]) circle(d = w);
+    }
+}
+
+// Crooked lightning-bolt antenna; the loop at its tip is the keyring.
+ant_base = [ix / 2, outer_max.y - 1];
+ant_pts  = [ant_base, ant_base + [3, 4], ant_base + [-2.5, 8], ant_base + [1.5, 12]];
+ring_c   = ant_pts[3] + [0, ring_outer_d / 2 + 0.5];
+module antenna() {
+    translate([0, 0, face_z]) difference() {
+        union() {
+            noodle(ant_pts, ant_w);
+            translate(ring_c) cylinder(d = ring_outer_d, h = app_t);
+        }
+        translate([ring_c.x, ring_c.y, -1]) cylinder(d = ring_hole_d, h = app_t + 2);
+    }
+}
+
+// Ears. Low X side: a satellite dish (half disc with a feed horn). High X
+// side: a hex bolt. Both flat on the bed.
+ear_y = iy * ear_y_frac;
+module ears() {
+    translate([0, 0, face_z]) linear_extrude(app_t) {
+        // dish, on the low-X wall
+        translate([outer_min.x + 0.5, ear_y]) difference() {
+            circle(r = dish_r);
+            translate([0, -dish_r - 1]) square([dish_r + 1, 2 * dish_r + 2]);
+        }
+        translate([outer_min.x - dish_r + 1, ear_y]) hull() {
+            circle(d = 2);
+            translate([-3.5, 0]) circle(d = 3.2);
+        }
+        // bolt, on the high-X wall
+        translate([outer_max.x - 0.5, ear_y]) {
+            square([2.5, 4.5], center = true);
+            translate([2.5, 0]) rotate(30) circle(d = bolt_d, $fn = 6);
+        }
+    }
+}
+
+// Arms: the high-X one waves (elbow out, hand up), the low-X one hangs.
+wave_pts = [[outer_max.x - 1, arm_y], [outer_max.x + 6, arm_y - 2], [outer_max.x + 8, arm_y + 6]];
+hang_pts = [[outer_min.x + 1, arm_y], [outer_min.x - 5, arm_y - 3], [outer_min.x - 6, arm_y - 10]];
+module arms() {
+    translate([0, 0, face_z]) {
+        noodle(wave_pts, arm_w);
+        noodle(hang_pts, arm_w);
+        linear_extrude(app_t) {
+            translate(wave_pts[2] + [0, 2]) circle(d = hand_d);
+            translate(hang_pts[2] + [0, -2]) circle(d = hand_d);
+        }
+    }
+}
+// The waving hand must not merge into the bolt ear.
+assert(wave_pts[2].y + 2 + hand_d / 2 + 1 < ear_y - bolt_d / 2, "waving hand runs into the bolt ear");
+
+// Legs: short, with big feet turned outward.
+leg_x = [ix * 0.27, ix * 0.73];
+module legs() {
+    translate([0, 0, face_z]) for (i = [0, 1]) {
+        x = leg_x[i];
+        out = i == 0 ? -1 : 1;
+        noodle([[x, outer_min.y + 1], [x, outer_min.y - leg_len]], leg_w);
+        linear_extrude(app_t) hull() {
+            translate([x, outer_min.y - leg_len - foot.y / 2 + 1]) circle(d = foot.y);
+            translate([x + out * (foot.x - foot.y), outer_min.y - leg_len - foot.y / 2 + 1]) circle(d = foot.y);
+        }
+    }
+}
+// Legs sit in front of the USB-C plugs, never in their way: the plugs go
+// in from below, deeper in Z than the legs are thick.
+usb_plug_z0 = l2_z + mini_pcb.z + usbc_size.y / 2 - usbc_plug.y / 2 - tol;
+assert(face_z + app_t + 0.5 <= usb_plug_z0, "legs would block the USB-C plugs");
+
 // USB-C cut-out through the bottom wall, centred on a board's receptacle.
 module usb_cutout(board_x, board_w, board_z, pcb_t) {
     cx = board_x + board_w / 2;
     cz = board_z + pcb_t + usbc_size.y / 2;
-    // the receptacle itself
     translate([cx, -wall / 2, cz])
         cube([usbc_size.x + 2 * tol, wall + 2, usbc_size.y + 2 * tol], center = true);
-    // recess for the plug's overmould, from the outside
     translate([cx, -wall - 1 + usbc_plug_recess / 2, cz])
         cube([usbc_plug.x + 2 * tol, usbc_plug_recess + 2, usbc_plug.y + 2 * tol], center = true);
 }
 
-// ------------------------------------------------------------ robot style --
-// Head outline: a rectangle with cut corners.
-module head_2d(inset = 0) {
-    x0 = outer_min.x + inset; y0 = outer_min.y + inset;
-    x1 = outer_max.x - inset; y1 = outer_max.y - inset;
-    c = head_chamfer;
-    polygon([[x0 + c, y0], [x1 - c, y0], [x1, y0 + c], [x1, y1 - c],
-             [x1 - c, y1], [x0 + c, y1], [x0, y1 - c], [x0, y0 + c]]);
-}
+// Engraved line along a 2D outline.
+module groove_2d(w = engrave_w) { difference() { children(); offset(delta = -w) children(); } }
 
-// Wall left at a cut corner, measured diagonally to the cavity's corner.
-corner_wall = (wall + wall - head_chamfer) / sqrt(2);
-assert(corner_wall >= 1.0, str("head_chamfer leaves only ", corner_wall, " mm of wall at the corners"));
-
-module head_body(z0, z1, bevel_front = true) {
-    b = bevel_front ? face_bevel : 0;
-    hull() {
-        translate([0, 0, z0]) linear_extrude(0.01) head_2d(b);
-        translate([0, 0, z0 + b]) linear_extrude(z1 - z0 - b) head_2d();
-    }
-}
-
-// Antenna on top, which is also the keyring loop. Flat on the bed (front
-// face down), so it prints without supports.
-ant_ring_cy = outer_max.y + ant_stalk_h + ring_outer_d / 2;
-module antenna() {
-    cx = ix / 2;
-    difference() {
-        union() {
-            // collar narrowing into the stalk, one outline so the two never
-            // share an edge (shared edges leave sliver triangles in the STL)
-            translate([0, 0, -front]) linear_extrude(ant_t) polygon([
-                [cx - ant_base_w / 2, outer_max.y - 0.5], [cx + ant_base_w / 2, outer_max.y - 0.5],
-                [cx + ant_stalk_w / 2, outer_max.y + 1.5], [cx + ant_stalk_w / 2, ant_ring_cy],
-                [cx - ant_stalk_w / 2, ant_ring_cy], [cx - ant_stalk_w / 2, outer_max.y + 1.5]]);
-            translate([cx, ant_ring_cy, -front]) cylinder(d = ring_outer_d, h = ant_t);
-        }
-        translate([cx, ant_ring_cy, -front - 1]) cylinder(d = ring_hole_d, h = ant_t + 2);
-    }
-}
-
-// Bolt "ears": a round boss with a hex nut, on both sides, sitting on the bed.
-ear_y  = oled_y + oled_pcb.y / 2;
-ear_cz = -front + ear_d / 2;
-module ears() {
-    for (side = [-1, 1]) {
-        x_wall = side < 0 ? outer_min.x : outer_max.x;
-        translate([x_wall, ear_y, ear_cz]) rotate([0, side * 90, 0]) {
-            translate([0, 0, -0.5]) cylinder(d = ear_d, h = ear_len + 0.5);
-            translate([0, 0, ear_len]) rotate([0, 0, 30]) cylinder(d = ear_hex_d, h = ear_hex_len, $fn = 6);
-        }
-    }
-}
-// The right ear must stay clear of the switch slot behind it.
-sw_slot_z0 = l3_z + sw_body.z / 2 - sw_lever.z / 2 - tol;
-assert(ear_cz + ear_d / 2 + 1 <= sw_slot_z0, "right ear runs into the switch slot");
-
-// Vent grooves along the depth of both side walls, low down.
-vent_y0 = 3;
-module vents() {
-    for (side = [0, 1], i = [0 : vent_n - 1]) {
-        x = side == 0 ? outer_min.x - 1 : outer_max.x - vent_depth;
-        translate([x, vent_y0 + i * vent_pitch, l2_z])
-            cube([vent_depth + 1, vent_w, iz - l2_z - 2]);
-    }
-}
-assert(vent_y0 + vent_n * vent_pitch < sw_y, "vents run into the switch slot");
-
-// Front-face engravings, all cut into the face from the outside.
+// Front-face engravings: a bandage on the forehead, the warning above the
+// buttons, cheek bolts. Engraved only (the face is on the print bed).
 module face_engravings() {
-    // recessed visor round the screen window
-    translate([view_x - visor_margin, view_y - visor_margin, -front - 1])
-        cube([oled_view.x + 2 * visor_margin, oled_view.y + 2 * visor_margin, 1 + engrave]);
-    // panel line round the buttons
-    if (n_buttons > 0) {
-        w = (n_buttons - 1) * btn_pitch + flange_d + 3;
-        h = flange_d + 1;
-        translate([ix / 2 - w / 2, btn_y - h / 2, -front - 1]) difference() {
-            cube([w, h, 1 + engrave]);
-            translate([panel_groove, panel_groove, -1]) cube([w - 2 * panel_groove, h - 2 * panel_groove, 3 + engrave]);
+    translate([0, 0, face_z - 1]) linear_extrude(1 + engrave) {
+        // bandage, stuck on crooked
+        translate([ix * 0.22, iy - 4.5]) rotate(-28) {
+            groove_2d() offset(r = 1.5) square(bandage_size - [3, 3], center = true);
+            for (dx = [-1, 1], dy = [-1, 1]) translate([dx * 1.2, dy * 0.8]) square(0.7, center = true);
         }
+        // DON'T PRESS, between the screen and the buttons. Mirrored so it
+        // reads correctly from the front (where +X points left).
+        translate([ix / 2, (btn_y + flange_d / 2 + view_y) / 2]) mirror([1, 0])
+            text(face_text, size = face_text_size, halign = "center", valign = "center",
+                 font = "Liberation Sans:style=Bold");
+        // cheek bolts
+        for (x = [view_x - 3.5, view_x + oled_view.x + 3.5])
+            translate([x, view_y + 2]) groove_2d() circle(d = 3);
     }
-    // rivets in the four face corners
-    for (x = [outer_min.x + 3, outer_max.x - 3], y = [outer_min.y + 3, outer_max.y - 3])
-        translate([x, y, -front - 1]) difference() {
-            cylinder(d = rivet_d, h = 1 + engrave);
-            translate([0, 0, -1]) cylinder(d = rivet_d - 1.0, h = 3 + engrave);
-        }
 }
+// Keep the warning off the window and the button caps.
+assert(face_text_size + 1 < view_y - (btn_y + flange_d / 2), "no room for the face text");
 
-// Pegs into the OLED's mounting holes; the stand-offs carry the PCB at the
-// glass's thickness so the glass sits on the front face without load.
+// Pegs into the OLED's mounting holes.
 module oled_pegs() {
     for (hx = [oled_hole_inset.x, oled_pcb.x - oled_hole_inset.x],
          hy = [oled_hole_inset.y, oled_pcb.y - oled_hole_inset.y])
@@ -210,54 +243,67 @@ module oled_pegs() {
 module shell() {
     difference() {
         union() {
-            head_body(outer_min.z, outer_max.z);
+            translate([0, 0, face_z]) linear_extrude(iz - face_z) head_2d();
             antenna();
             ears();
+            arms();
+            legs();
         }
-        vents();
-        face_engravings();
-        translate([0, 0, 0]) cube([ix, iy, iz + 1]);
-        // screen window, with a 45-degree chamfer outward so the bezel does
-        // not shade the edge pixels
+        translate([0, 0, 0]) linear_extrude(iz + 1) cavity_2d();
+        // screen window, flaring toward the face. 0.8 x front sideways over
+        // the full face thickness = 39 degrees from vertical: not an overhang.
         hull() {
             translate([view_x, view_y, -0.01]) cube([oled_view.x, oled_view.y, 0.02]);
-            translate([view_x - front, view_y - front, -front - 0.01])
-                cube([oled_view.x + 2 * front, oled_view.y + 2 * front, 0.02]);
+            translate([view_x - 0.8 * front, view_y - 0.8 * front, face_z - 0.01])
+                cube([oled_view.x + 1.6 * front, oled_view.y + 1.6 * front, 0.02]);
         }
         for (i = [0 : n_buttons - 1])
-            translate([btn_x(i), btn_y, -front - 1]) cylinder(d = cap_d + 2 * tol, h = front + 2);
+            translate([btn_x(i), btn_y, face_z - 1]) cylinder(d = cap_d + 2 * tol, h = front + 2);
         usb_cutout(mini_x, mini_pcb.x, l2_z, mini_pcb.z);
         usb_cutout(tp_x, tp_pcb.x, l2_z, tp_pcb.z);
-        // switch lever slot through the right wall
         translate([ix - 1, sw_y + sw_body.y / 2 - (sw_lever.y + sw_travel) / 2 - tol,
                    l3_z + sw_body.z / 2 - sw_lever.z / 2 - tol])
             cube([wall + 2, sw_lever.y + sw_travel + 2 * tol, sw_lever.z + 2 * tol]);
+        face_engravings();
     }
     oled_pegs();
 }
 
+key_hole = [ix / 2, iy * 0.72];
 module lid() {
     lip_w = 1.2;
     difference() {
         translate([0, 0, iz]) linear_extrude(lid_t) head_2d();
-        // serial plate on the back of the head
-        translate([ix / 2, iy / 2, iz + lid_t - engrave]) linear_extrude(1)
-            text(lid_label, size = lid_label_size, halign = "center", valign = "center",
-                 font = "Liberation Mono:style=Bold");
+        // the warranty notice, readable from behind
+        translate([0, 0, iz + lid_t - engrave]) linear_extrude(1)
+            for (i = [0 : len(lid_text) - 1])
+                translate([ix / 2, iy * 0.38 - i * (lid_text_size + 2)])
+                    text(lid_text[i], size = lid_text_size, halign = "center", valign = "center",
+                         font = "Liberation Sans:style=Bold");
+        translate([key_hole.x, key_hole.y, iz - 1]) cylinder(d = key_shaft_d + 2 * key_fit, h = lid_t + 2);
     }
-    translate([0, 0, iz - lip_h]) difference() {
-        translate([tol, tol, 0]) cube([ix - 2 * tol, iy - 2 * tol, lip_h]);
-        translate([tol + lip_w, tol + lip_w, -1]) cube([ix - 2 * (tol + lip_w), iy - 2 * (tol + lip_w), lip_h + 2]);
+    translate([0, 0, iz - lip_h]) linear_extrude(lip_h) difference() {
+        offset(delta = -tol) cavity_2d();
+        offset(delta = -tol - lip_w) cavity_2d();
     }
 }
 
-// One cap per button: a shaft through the face and a flange inside that
-// stops it falling out. Printed separately, flange down.
+// Wind-up key: a flat figure-eight bow on the bed, the shaft standing up.
+// The shaft goes through the lid and stops short of the battery.
+key_len = lid_t + (lip_h + tol) / 2;
+module key() {
+    linear_extrude(2.4) {
+        for (sx = [-1, 1]) translate([sx * 4.2, 0]) difference() { circle(d = 7); circle(d = 3); }
+        square([5, 3.2], center = true);
+    }
+    translate([0, 0, 2.4]) cylinder(d = key_shaft_d, h = key_len);
+}
+assert(key_len < lid_t + lip_h + tol, "key shaft would touch the battery");
+
 module cap() {
     cylinder(d = flange_d, h = flange_t);
     cylinder(d = cap_d, h = flange_t + front + cap_protrude);
 }
-
 module caps_for_print() {
     for (i = [0 : max(n_buttons, 1) - 1]) translate([i * (flange_d + 3), 0, 0]) cap();
 }
@@ -268,7 +314,7 @@ module assembly() {
         shell();
         translate([ix / 2, -50, -50]) cube([200, 200, 200]);
     }
-    color("Peru", 0.6) translate([0, 0, 12]) lid();  // lifted off, to see inside
+    color("Peru", 0.6) translate([0, 0, 12]) lid();
     color("DimGray") translate([oled_x, oled_y, oled_glass.z]) cube(oled_pcb);
     color("Black") translate([glass_x, glass_y, 0]) cube(oled_glass);
     color("RoyalBlue") translate([mini_x, mini_y, l2_z]) cube([mini_pcb.x, mini_pcb.y, mini_pcb.z + mini_comp_h]);
@@ -281,8 +327,24 @@ module assembly() {
     }
 }
 
+// Colour portrait for previews: the shell with the screen lit and a face on
+// it, the caps in, the key on the back. Not a printable part.
+module hero() {
+    color("#3d8f8a") shell();
+    color("#0b0f0d") translate([view_x - 1, view_y - 1, 0.02]) cube([oled_view.x + 2, oled_view.y + 2, 0.3]);
+    color("White") translate([view_x + oled_view.x / 2, view_y + oled_view.y / 2, -0.02]) mirror([0, 0, 1]) linear_extrude(0.3) {
+        for (sx = [-1, 1]) translate([sx * 7.5, 1.5]) offset(r = 1.2) square([2.6, 6], center = true);
+        translate([0, -5]) difference() { circle(r = 2.6); translate([-3, 0]) square(6); }
+    }
+    for (i = [0 : n_buttons - 1]) color("#ff7a3d") translate([btn_x(i), btn_y, -front]) cap();
+    color("#ffcf3d") translate([key_hole.x, key_hole.y, iz + lid_t + 2.4 + 0.01]) rotate([180, 0, 0]) key();
+    color("#3d8f8a") lid();
+}
+
 if (part == "shell") shell();
 else if (part == "lid") translate([0, 0, iz + lid_t]) rotate([180, 0, 0]) lid();  // plate down
 else if (part == "caps") caps_for_print();
-else if (part == "back") { shell(); lid(); }   // preview: closed, seen from behind
+else if (part == "key") key();
+else if (part == "back") { shell(); lid(); translate([key_hole.x, key_hole.y, iz + lid_t + 2.4 + 0.01]) rotate([180, 0, 0]) key(); }
+else if (part == "hero") hero();
 else assembly();

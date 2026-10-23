@@ -68,40 +68,55 @@ flange_t     = 0.8;
 // ---- LIS3DH breakout (optional) --------------------------------------------
 accel_pcb = [18.0, 21.0, 1.6];      // PLACEHOLDER  Adafruit-style breakout
 
-// ---- style: robot head ------------------------------------------------------
-// The shell prints face down, so nothing may stand proud of the front face:
-// all front detail is engraved, and everything that sticks out sideways
-// (antenna, ears) starts on the print bed.
-head_chamfer = 1.5;    // cut corners of the head outline (limited by wall at the corner)
-face_bevel   = 0.8;    // bevel round the front edge
-engrave      = 0.5;    // depth of front-face engravings
-visor_margin = 2.5;    // recessed visor round the screen window
-panel_groove = 0.8;    // width of the panel line round the buttons
-rivet_d      = 2.4;    // engraved rivet rings in the face corners
+// ---- style: "Boltik", a goofy robot -----------------------------------------
+// Print rules this style keeps (check.py verifies the result):
+//  - the shell prints FACE DOWN; nothing stands proud of the front face,
+//    front detail is engraved only;
+//  - every limb, ear and the antenna is a flat shape lying on the bed
+//    (z from the face to face + app_t), so nothing needs support;
+//  - minimum printed width 3 mm for anything that carries load (limbs,
+//    antenna, keyring), 0.6 mm for engraved lines.
+app_t       = 4.0;    // thickness of limbs / ears / antenna (Z, on the bed)
+min_feature = 3.0;    // smallest load-carrying width
+engrave     = 0.5;    // engraving depth
+engrave_w   = 0.7;    // engraved line width
 
-// antenna on top = keyring loop
-ant_t        = 4.0;    // thickness (Z), flat on the bed
-ant_base_w   = 12.0;   // collar where it meets the head
-ant_stalk_w  = 4.5;
-ant_stalk_h  = 4.0;
-ring_outer_d = 10.0;
+// head: bigger than the parts need, on purpose (big head, tiny body)
+head_pad_x   = 2.5;   // extra room left and right of the parts
+head_pad_top = 3.0;   // extra room above
+r_top        = 8.0;   // inner corner radius, top (a round, bonk-able head)
+r_bot        = 1.5;   // inner corner radius, bottom (the USB ports sit flush there)
+
+// antenna: a crooked lightning-bolt stalk, keyring loop at the tip
+ant_w       = 3.6;
+ring_outer_d = 10.5;
 ring_hole_d  = 4.5;
 
-// bolt "ears" on both sides
-ear_d     = 8.0;
-ear_len   = 2.0;       // round boss
-ear_hex_d = 5.2;       // hex nut on the boss (across corners)
-ear_hex_len = 1.4;
+// ears: a little satellite dish on one side, a bolt on the other
+ear_y_frac  = 0.70;   // height of the ears, as a fraction of the cavity
+dish_r      = 6.0;
+bolt_d      = 7.5;
 
-// side vents (grooves, not holes)
-vent_n     = 3;
-vent_w     = 1.0;
-vent_pitch = 2.6;
-vent_depth = 0.6;
+// noodle arms: one waves, one hangs
+arm_w       = 4.2;
+hand_d      = 6.5;
+arm_y       = 14;     // where the arms leave the head
 
-// lid
-lid_label = "KC-01";
-lid_label_size = 5;
+// stubby legs with big feet
+leg_w       = 4.5;
+leg_len     = 5.0;
+foot        = [9.0, 4.5];
+
+// face engravings
+bandage_size = [12, 4.5];
+face_text    = "DON'T PRESS";
+face_text_size = 3.2;
+
+// back
+lid_text     = ["WARRANTY VOID", "IF ANNOYED"];
+lid_text_size = 3.4;
+key_shaft_d  = 3.0;   // wind-up key, a separate little part
+key_fit      = 0.15;  // per side: snug enough to stay, loose enough to turn
 
 // ---- gaps between internal layers ------------------------------------------
 layer_gap = 0.5;

@@ -45,8 +45,18 @@
   3 on the front under the screen (Sasha). OLED 1.3", buttons 6x6 (Sasha).
   OpenSCAD = Homebrew `openscad@snapshot` 2026.10.11 (stable cask disabled).
 
+- 2026-10-23 Case direction: Sasha rejected the box/robot-box and 9 concept
+  sketches (case/concepts.scad); wants a goofy robot that prints without
+  surprises -> **"Boltik"** (keychain_case.scad): big rounded head, lightning
+  antenna = loop, dish + bolt ears, waving/hanging noodle arms, stubby legs,
+  bandage + DON'T PRESS engraved, WARRANTY VOID IF ANNOYED + wind-up key on
+  the back. 66 x 79 x 21.6 mm. check.py now also checks rounded corners and
+  printability (overhangs / bridges from the STLs); verified to fail on bad
+  geometry. All checks pass.
+
 ## In progress
-- Case: waiting for caliper measurements to replace PLACEHOLDER values.
+- Case: waiting for Sasha's verdict on Boltik, then caliper measurements to
+  replace PLACEHOLDER values.
 
 ## Next
 - Phase 2 (stubs): flesh out button + LIS3DH placeholders with TODOs and the

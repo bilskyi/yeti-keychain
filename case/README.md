@@ -1,6 +1,7 @@
-# Case: robot head (v1, placeholder dimensions)
+# Case: "Boltik", a goofy robot (placeholder dimensions)
 
-Parametric OpenSCAD model in robot-head style: shell, back lid and button caps.
+Parametric OpenSCAD model: shell (head with limbs, ears and antenna), back
+lid, button caps, wind-up key. `concepts.scad` holds the earlier form sketches.
 **Every part size in `params.scad` marked `PLACEHOLDER` is a typical value,
 not a measurement.** Measure your parts and replace them before a real print.
 
@@ -15,15 +16,14 @@ stable cask is disabled in Homebrew because it fails Gatekeeper).
 
 | | |
 |---|---|
-| Front | screen in a recessed visor, 1–3 buttons in an engraved panel below it (`n_buttons`), engraved rivets in the corners |
-| Top | antenna, which is the keyring loop |
-| Sides | hex-bolt "ears", vent grooves low down |
-| Left side (looking at the screen) | slide-switch slot, behind the ear |
-| Bottom | two USB-C cut-outs: TP4056 (charging, left) and Super Mini (flashing, right), seen from the front |
-| Back | lid with an engraved `KC-01` serial plate, friction-fit lip |
+| Front | screen window, `DON'T PRESS` above 1–3 buttons, a crooked bandage on the forehead, cheek bolts (all engraved) |
+| Top | lightning-bolt antenna; the loop at its tip is the keyring |
+| Sides | satellite-dish ear and bolt ear; one arm waves, one hangs |
+| Bottom | stubby legs with big feet; two USB-C cut-outs between/behind them (the legs are in front of the plugs, never in their path) |
+| Left side (looking at the screen) | slide-switch slot |
+| Back | lid engraved `WARRANTY VOID IF ANNOYED`, friction-fit lip, hole for the wind-up key |
 
-All of the front detail is engraved, never raised, because the shell prints
-face down. The antenna and ears start on the print bed, so no supports are needed.
+Overall: 66 × 79 × 21.6 mm with limbs and antenna (head 44.6 × 48.3).
 
 Inside, front to back: OLED and buttons → Super Mini + TP4056 → battery +
 switch → (LIS3DH, if `accel_pocket = true`) → lid.
@@ -36,6 +36,8 @@ Size with placeholders: head **39.6 × 45.3 × 21.6 mm**; ~46 mm wide across the
   the USB-C cut-outs' top edges and the ears' undersides are short bridges/overhangs.
 - `lid.stl`: plate down.
 - `caps.stl`: flange down. Print a spare or two; they are tiny.
+- `key.stl`: bow down. Push the shaft into the lid hole; it is sized to turn
+  (`key_fit`), add a drop of glue if it should not.
 - PLA or PETG, 0.2 mm layers. If the lid is too tight or loose, change `tol`.
 
 ## Assembly notes (v0)
@@ -46,13 +48,26 @@ Size with placeholders: head **39.6 × 45.3 × 21.6 mm**; ~46 mm wide across the
 - Boards and battery are held by the stack and the lid; a strip of
   double-sided tape under each board helps.
 
+## Print rules the design keeps
+
+- Shell prints face down. Nothing stands proud of the front face; front
+  detail is engraved (lines >= 0.7 mm wide, 0.5 mm deep).
+- Limbs, ears and antenna are flat shapes lying on the bed: no supports.
+- Anything that carries load (limbs, antenna, keyring loop wall) is >= 3 mm.
+- These are asserted in the model; a violation stops the build.
+
 ## Checks (`check.py`)
 
 1. Every internal part has ≥ `tol` gap to the walls, to the lid lip and to
    every other part. Allowed exceptions: the OLED glass and button flanges
    touch the front face, the USB-C ports reach the bottom wall, and the switch
    touches the right wall where its lever goes through.
+   The head's rounded corners count: a part's corner must stay >= tol inside the arc.
 2. Every STL is watertight: each edge is shared by exactly two triangles.
+3. Every STL is printable as exported: downward-facing patches above the bed
+   are listed; a sloped one steeper than 45 degrees (needs support) or a
+   bridge wider than 15 mm both ways fails. Currently the longest bridge is
+   13 mm (USB-C recess roof) and there are no overhangs.
 
 These check the model against **its own parameters**. With placeholder
 dimensions, "passes" does not mean your real parts fit.
