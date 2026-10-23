@@ -12,3 +12,5 @@ host/out/
 .DS_Store
 .vscode/
 .cache/
+case/yeti/original/
+case/yeti/previews/
