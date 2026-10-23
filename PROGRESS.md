@@ -38,8 +38,15 @@
   Not yet checked on hardware: battery power path, light-sleep current.
 - Flash size set to 4 MB (boot log detected 4 MB on the Super Mini).
 
+- 2026-10-23 **Phase 3 v0 (case), placeholder dimensions**: `case/` OpenSCAD
+  model (params.scad / keychain_case.scad), shell + lid + caps STLs, PNG
+  previews, check.py (clearance >= tol + watertight), all pass; check verified
+  to fail on an overlapping layout. Outer 39.6 x 45.3 x 21.6 mm. Buttons:
+  3 on the front under the screen (Sasha). OLED 1.3", buttons 6x6 (Sasha).
+  OpenSCAD = Homebrew `openscad@snapshot` 2026.10.11 (stable cask disabled).
+
 ## In progress
-- Nothing. Waiting for Sasha to pick the next phase.
+- Case: waiting for caliper measurements to replace PLACEHOLDER values.
 
 ## Next
 - Phase 2 (stubs): flesh out button + LIS3DH placeholders with TODOs and the
