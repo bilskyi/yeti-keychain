@@ -1,0 +1,24 @@
+CONFIG_IDF_TARGET="esp32c3"
+
+# The Super Mini has no UART bridge: the console is the C3's built-in
+# USB Serial/JTAG on the board's USB-C.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# 80 MHz is plenty for a 128x64 face; 160 MHz roughly doubles active current.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_80=y
+
+# Power management: dynamic frequency scaling + automatic light sleep whenever
+# every task is blocked (i.e. between frames). power.c turns it on at boot.
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y
+# Keep the sleep entry/exit paths in IRAM so waking for the next frame is fast.
+CONFIG_PM_SLP_IRAM_OPT=y
+CONFIG_PM_RTOS_IDLE_OPT=y
+# USB Serial/JTAG dies in light sleep. While a USB host is attached (bench,
+# flashing), stay awake so the log keeps working; on battery nothing is
+# attached and light sleep proceeds normally.
+CONFIG_USJ_NO_AUTO_LS_ON_CONNECTION=y
+
+# Brownout detector stays on (default level). main.c checks the reset reason
+# and shows the low-battery face instead of boot-looping.
+CONFIG_ESP_BROWNOUT_DET=y
