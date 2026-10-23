@@ -20,7 +20,7 @@ body_stl = "original/obj_7_corp+face.stl_1.stl";
 // ---- buttons ---------------------------------------------------------------
 btn        = 6.0;     // 6x6 (Sasha)
 btn_body_h = 3.5;     // PLACEHOLDER  body height without the plunger
-btn_h      = 5.0;     // PLACEHOLDER  total height incl. plunger (4.3 / 5 / 7 / 9.5 exist: measure!)
+btn_h      = 5.0;     // 6x6x5, the common default (Sasha: "default 6x6"); 4.3 if the plunger barely shows
 plunger_d  = 3.5;     // PLACEHOLDER  round plunger
 leg_pitch  = 6.5;     // PLACEHOLDER  legs stick out on two opposite sides
 fit        = 0.2;     // per side, button in its pocket

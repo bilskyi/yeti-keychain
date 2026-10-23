@@ -45,9 +45,9 @@ caps on.
 
 ## Not verified / open
 
-- `btn_h` (total button height) is a **placeholder of 5.0 mm**: 6x6 buttons
-  come 4.3 / 5 / 7 / 9.5 mm tall. Measure yours; the model asserts if the cap
-  would bottom out or stand too proud.
+- `btn_h` = 5.0 mm: the common default 6x6x5 (Sasha has "default 6x6").
+  If the plunger only peeks ~0.8 mm above the body, they are 6x6x4.3: set
+  `btn_h = 4.3` and re-export (the model asserts if the cap would bottom out).
 - What sits **behind** the belly inside (the original's internal frame and
   tray) is not known yet: the leg slots and wires come out at z < 28 around
   y 144–150. The source link will tell; until then this is a risk.
