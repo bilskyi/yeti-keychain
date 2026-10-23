@@ -212,9 +212,102 @@ module cassette() {
     color("#8d8f95") for (sx = [-1, 1], sy = [-1, 1]) if (!(sx < 0 && sy > 0)) translate([sx * 25.5, sy * 15, -0.4]) cylinder(d = 2.6, h = 0.4);
 }
 
+// --------------------------------------------------------------- burger
+// A cheeseburger whose patty is the screen: the pet's face peeks out
+// between the buns under a drip of cheese. The buttons are sauce dots on
+// the bottom bun, and the keyring goes through an olive on a toothpick.
+module burger() {
+    bun = "#e0a052"; patty = "#4a2a1a"; cheese = "#f6c935"; lettuce = "#6cc04a";
+    sq = 0.48;                                                    // squash in depth
+    color(bun) translate([0, -17, 10]) scale([1, 0.32, sq]) difference() {     // bottom bun
+        sphere(r = 25); translate([0, -30, 0]) cube(60, center = true);
+    }
+    color(bun) translate([0, -17, 10]) scale([1, 1, sq]) rotate([90, 0, 0]) cylinder(r = 25, h = 4);
+    color(patty) difference() {                                               // patty = screen block
+        translate([0, -1, 10]) scale([1, 1, sq]) rotate([90, 0, 0]) cylinder(r = 24.5, h = 16, center = true);
+        translate([0, -1, -20]) linear_extrude(20 - 1.2) offset(r = 2.5) square([28, 13], center = true);
+    }
+    translate([0, -1, -1.3]) screen(31, 16, 2.5);
+    color(cheese) translate([0, 7.5, 10]) scale([1, 1, sq]) rotate([90, 0, 0]) cylinder(r = 25.5, h = 1.4, center = true, $fn = 4);
+    color(cheese) for (x = [-20.5, 19]) translate([x, 4, 2.5]) scale([1, 2.6, 1]) sphere(r = 1.8);   // drips, beside the screen
+    color(lettuce) translate([0, 9, 10]) scale([1, 1, sq]) rotate([90, 0, 0]) linear_extrude(1.6, center = true)
+        offset(r = 1) polygon([for (a = [0 : 10 : 359]) (26 + 1.6 * sin(a * 6)) * [cos(a), sin(a)]]);
+    color(bun) translate([0, 10, 10]) scale([1, 0.62, sq]) difference() {     // top bun
+        sphere(r = 25); translate([0, -30, 0]) cube(60, center = true);
+    }
+    color("#fff4d6") for (p = [[-10, 19], [0, 22], [10, 19], [-16, 14], [16, 14], [-5, 15.5], [6, 16]])
+        translate([p[0], p[1], -1.6 + abs(p[0]) * 0.18]) rotate([0, 0, p[0] * 4]) scale([1.6, 0.8, 0.6]) sphere(r = 1);
+    for (i = [0 : 2])                                                          // sauce dots = buttons
+        color(["#e8322f", "#f6c935", "#e8322f"][i]) translate([(i - 1) * 8, -19.5, -2.9 + abs(i - 1) * 0.5]) cylinder(d = 4.4, h = 1.2);
+    color("#c9a26b") translate([4, 25.5, 10]) rotate([-90, 0, 0]) cylinder(d = 1.4, h = 9);    // toothpick
+    color("#5f7d2b") translate([4, 36, 10]) rotate([0, 90, 0]) rotate_extrude() translate([2.6, 0]) circle(d = 2.6);  // olive loop
+}
+
+// ---------------------------------------------------------------- toast
+// A thick slice of toast, with a bite already taken out of the corner.
+// Crust all round, a butter pat sliding off, and three crumbs that are
+// actually the buttons.
+module toast() {
+    crust = "#b5702e"; crumb = "#f3d9a4"; butter = "#ffe066";
+    module slice2d() {
+        difference() {
+            union() {
+                translate([0, -6]) square([44, 34], center = true);
+                for (sx = [-1, 1]) translate([sx * 11, 12]) circle(r = 13);
+            }
+            // the bite: three overlapping tooth marks
+            for (a = [0, 1, 2]) translate([21 - a * 2.5, 21 - a * 4.5]) circle(r = 5.2);
+        }
+    }
+    color(crust) linear_extrude(20) slice2d();
+    color(crumb) difference() {
+        translate([0, 0, -0.6]) linear_extrude(0.7) offset(delta = -2.4) slice2d();
+        translate([0, -2, -2]) linear_extrude(4) offset(r = 2.5) square([28, 13], center = true);
+    }
+    translate([0, -2, -0.7]) screen(31, 16, 2.5);
+    color(butter) translate([-13, 13, -1.6]) rotate([0, 0, 12]) linear_extrude(1.1) offset(r = 0.8) square([8, 6], center = true);
+    color(crust) for (i = [0 : 2]) translate([(i - 1) * 8, -17, -1.6]) rotate([0, 0, i * 40]) cylinder(d = 4.4, h = 1.1, $fn = 7);
+    color(crust) translate([-19, 22, 10]) rotate([0, 90, 0]) rotate_extrude() translate([3, 0]) circle(d = 2.4);
+}
+
+// ----------------------------------------------------------------- poop
+// The poop emoji, with feelings. Three coils and a curl on top (the curl
+// is the keyring loop), the screen across the big bottom coil, buttons on
+// the middle coil, and one fly that will not leave it alone.
+module poop() {
+    brown = "#7a4a24"; dark = "#1d1d1d";
+    sq = 0.6;
+    module coil(y, R, r) translate([0, y, 10]) scale([1, 1, sq]) rotate([90, 0, 0]) {
+        rotate_extrude() translate([R, 0]) circle(r = r);
+        cylinder(r = R, h = 2 * r * 0.9, center = true);
+    }
+    color(brown) difference() {
+        union() {
+            coil(-12, 17, 8.5);
+            coil(1, 12.5, 7);
+            coil(12, 8, 5.8);
+            hull() { translate([0, 17, 10]) scale([1, 1, sq]) sphere(r = 5); translate([3, 25, 10]) sphere(r = 2.2); }
+        }
+        translate([0, -11.5, -20]) linear_extrude(20 - 0.6 + 2.0) offset(r = 2.5) square([28, 12], center = true);
+    }
+    translate([0, -11.5, 1.3]) screen(31, 15.5, 2.5);
+    color(dark) for (i = [-1 : 1]) translate([i * 7.5, 2.2, -2.3 + abs(i) * 0.9]) cylinder(d = 4.2, h = 1.2);
+    color(brown) translate([5.5, 27.5, 10]) rotate([0, 90, 0]) rotate_extrude() translate([2.8, 0]) circle(d = 2.6);
+    // the fly
+    color(dark) translate([-21, 18, -1]) {
+        rotate([0, 0, 25]) cylinder(d = 0.6, h = 0.1);
+        sphere(d = 3);
+        color("#cfe7ff") for (sx = [-1, 1]) translate([sx * 1.8, 1.2, 0]) rotate([0, 0, sx * 30]) scale([1, 1.6, 0.25]) sphere(d = 3);
+    }
+    color(dark) translate([-17, 15, -0.5]) rotate([0, 0, 40]) cube([0.5, 6, 0.5], center = true);   // its flight path
+}
+
 if (concept == "tv") tv();
 else if (concept == "helmet") helmet();
 else if (concept == "arcade") arcade();
 else if (concept == "cat") cat();
 else if (concept == "cassette") cassette();
+else if (concept == "burger") burger();
+else if (concept == "toast") toast();
+else if (concept == "poop") poop();
 else ghost();
