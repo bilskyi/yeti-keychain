@@ -30,7 +30,7 @@ plate_stl = "original/obj_4_Yeti Full.stl_3.stl";
 module plate_to_body() multmatrix([[0, -1, 0, 179.1], [-1, 0, 0, 267.05], [0, 0, -1, 0], [0, 0, 0, 1]]) children();
 module body_to_plate() multmatrix([[0, -1, 0, 267.05], [-1, 0, 0, 179.1], [0, 0, -1, 0], [0, 0, 0, 1]]) children();
 plate_t   = 4.0;
-old_usb   = [131.1, 141.1];            // the original USB hole, body x / y
+old_usb   = [131.1, 140.25];           // the original USB hole + its outer recess, body x / y
 opening   = [111.1, 100.3, 151.1, 150.3];  // the body's back opening, x0 y0 x1 y1
 
 // ---- carrier layout ---------------------------------------------------------
@@ -156,7 +156,7 @@ module back_plate_body() {
         union() {
             plate_to_body() import(plate_stl, convexity = 6);
             // fill the old USB hole and its outer recess (flat middle of the plate)
-            translate([old_usb.x - 12, old_usb.y - 6.5, -plate_t + 0.01]) cube([24, 13, plate_t - 0.02]);
+            translate([old_usb.x - 12.5, old_usb.y - 7, -plate_t]) cube([25, 14, plate_t - 0.01]);   // flush with the outside: no seam
         }
         board_port(tp_pcb.x, tp_pcb_y, tp_comp_h);
         board_port(mini_pcb.x, mini_pcb_y, mini_comp_h);

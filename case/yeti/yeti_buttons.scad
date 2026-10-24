@@ -103,3 +103,6 @@ else preview();
 assert(sqrt(pow((leg_pitch + 0.7 + 2 * fit) / 2, 2) + pow((btn + 2 * fit) / 2, 2)) < cap_d / 2 - 0.2,
        "pocket corners would show beside the cap");
 assert(cs_d > cap_d + 0.4, "cap rubs in its recess");
+
+// The caps in place on the body (for other files' previews).
+module caps_in_place() { for (s = spots) at(s) translate([0, 0, cap_bottom]) cap(); }
