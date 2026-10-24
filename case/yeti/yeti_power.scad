@@ -99,9 +99,9 @@ function usb_box(pcb_top_face_y) = [[cx - usbc_size.x / 2, pcb_top_face_y - usbc
                                     [cx + usbc_size.x / 2, pcb_top_face_y, -plate_t + 7.3]];
 comps = [
     ["tp4056", [cx - tp_pcb.x / 2, tp_pcb_y[0] - tp_comp_h, board_z0], [cx + tp_pcb.x / 2, tp_pcb_y[1], board_z0 + tp_pcb.y], "y+"],
-    ["tp4056:usb", usb_box(tp_pcb_y[0])[0], usb_box(tp_pcb_y[0])[1], "y+"],
+    ["tp4056:usb", usb_box(tp_pcb_y[0])[0], usb_box(tp_pcb_y[0])[1], "y+", "stadium"],
     ["supermini", [cx - mini_pcb.x / 2, mini_pcb_y[0] - mini_comp_h, board_z0], [cx + mini_pcb.x / 2, mini_pcb_y[1], board_z0 + mini_pcb.y], "y+"],
-    ["supermini:usb", usb_box(mini_pcb_y[0])[0], usb_box(mini_pcb_y[0])[1], "y+"],
+    ["supermini:usb", usb_box(mini_pcb_y[0])[0], usb_box(mini_pcb_y[0])[1], "y+", "stadium"],
     ["battery", [batt_x[0], batt_y0, batt_z[0]], [batt_x[1], batt_y1, batt_z[1]], "z-"],
     ["switch", [sw_c.x - sw_body.x / 2, sw_c.y - sw_body.y / 2, fl_z0], [sw_c.x + sw_body.x / 2, sw_c.y + sw_body.y / 2, fl_z0 + sw_body.z], "z-"],
 ];
@@ -149,14 +149,25 @@ module carrier() {
 // receptacle-sized hole through the outer skin.
 module board_port(w, pcb_y, parts_h) {
     translate([cx - w / 2 - tol, pcb_y[0] - parts_h - tol, board_z0 - tol]) cube([w + 2 * tol, pcb_y[1] - pcb_y[0] + parts_h + 2 * tol, plate_t + 1]);
-    translate([cx - usbc_size.x / 2 - tol, pcb_y[0] - usbc_size.y - tol, -plate_t - 1]) cube([usbc_size.x + 2 * tol, usbc_size.y + 2 * tol, plate_t + 2]);
+    // the receptacle's own shape: a stadium (rounded ends), not a rectangle,
+    // with a small chamfer on the outside so the plug finds it
+    // (own names: in OpenSCAD a second "w =" would silently replace the
+    // parameter for the whole module, pocket included)
+    uw = usbc_size.x + 2 * tol; uh = usbc_size.y + 2 * tol;
+    c = [cx, pcb_y[0] - usbc_size.y / 2];
+    translate([c.x, c.y, -plate_t - 1]) linear_extrude(plate_t + 2) stadium(uw, uh);
+    translate([c.x, c.y, -plate_t - 0.01]) hull() {
+        linear_extrude(0.01) stadium(uw + 1.0, uh + 1.0);
+        translate([0, 0, 0.5]) linear_extrude(0.01) stadium(uw, uh);
+    }
 }
+module stadium(w, h) { hull() for (sx = [-1, 1]) translate([sx * (w - h) / 2, 0]) circle(d = h, $fn = 48); }
 module back_plate_body() {
     difference() {
         union() {
             plate_to_body() import(plate_stl, convexity = 6);
             // fill the old USB hole and its outer recess (flat middle of the plate)
-            translate([old_usb.x - 12.5, old_usb.y - 7, -plate_t]) cube([25, 14, plate_t - 0.01]);   // flush with the outside: no seam
+            translate([old_usb.x - 12.5, old_usb.y - 7, -plate_t + 0.02]) cube([25, 14, plate_t - 0.03]);   // 0.02 under the surface: exactly flush leaves sliver triangles (the original face sits at 4.0003)
         }
         board_port(tp_pcb.x, tp_pcb_y, tp_comp_h);
         board_port(mini_pcb.x, mini_pcb_y, mini_comp_h);
@@ -194,7 +205,11 @@ module probe() {
         hi = [for (a = [0 : 2]) has(str("xyz"[a], "+")) ? -0.01 : tol - 0.01];
         intersection() {
             union() { import(body_stl, convexity = 10); carrier(); back_plate_body(); }
-            translate(c[1] - lo) cube(c[2] - c[1] + lo + hi);
+            if (len(c) > 4 && c[4] == "stadium")    // a USB-C receptacle is rounded at both ends
+                translate([(c[1].x + c[2].x) / 2, (c[1].y + c[2].y) / 2, c[1].z - lo.z])
+                    linear_extrude(c[2].z - c[1].z + lo.z + hi.z)
+                        stadium(c[2].x - c[1].x + 2 * (tol - 0.01), c[2].y - c[1].y + 2 * (tol - 0.01));
+            else translate(c[1] - lo) cube(c[2] - c[1] + lo + hi);
         }
     } else if (probe_i == len(comps)) intersection() { import(body_stl, convexity = 10); carrier(); }
     else intersection() { import(body_stl, convexity = 10); back_plate_body(); }
