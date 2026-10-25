@@ -79,6 +79,22 @@
   pass against the real mesh; both new parts print without supports.
   Originals stay local and untracked (third-party design).
 
+- 2026-10-25 **Phase 2 (v0.2), software only**: Sasha has buttons, LIS3DH,
+  passive buzzer. Real button driver (level IRQ = light-sleep wake, debounce,
+  short/long), LIS3DH (hardware click -> TAP/DOUBLE_TAP on INT1, software
+  shake/tilt), buzzer (`FEATURE_SOUND`, LEDC on GPIO10, XTAL clock, chirps per
+  reaction, BTN_B_LONG mutes). Main loop waits in `input_wait()` so an IRQ
+  ends the idle frame early. BUTTONS/ACCEL/SOUND now default ON. Host
+  `input_test` (mutation-checked); default/analyze/ssd1306/all-on/min builds clean.
+  Tilt axis/sign are PLACEHOLDERs until mounted.
+- 2026-10-25 **Phase 2 on hardware** (USB power, breadboard): OLED, LIS3DH
+  (0x19), buttons A/B, buzzer all work. Bench fixes: taps read every frame
+  (INT1 alone missed them), tap threshold 24, ringing = clicks <80 ms apart,
+  double tap in software (chip's DCLICK never fired), taps dropped around
+  button presses (the press jolt read as a tap). Buzzer too quiet with no
+  transistor: tunes moved to 1.5-4 kHz, drive cap 3 = loud enough (Sasha).
+  Optional bridge mode (− on GPIO20) is in the code, off. ~1 in 7 double taps reads as single.
+
 ## In progress
 - Yeti: waiting for Sasha's review; then caliper measurements (boards,
   battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design

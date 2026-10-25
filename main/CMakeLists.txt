@@ -12,17 +12,20 @@ set(KC_SRCS
     face/hud.c
     input/input_event.c
     input/input.c
+    input/button_logic.c
+    input/motion_logic.c
     input/buttons.c
     input/accel_lis3dh.c
     power/power.c
     power/policy.c
     power/battery.c
     power/battery_logic.c
+    sound/sound.c
     net/net.c)
 
 idf_component_register(SRCS ${KC_SRCS}
                        INCLUDE_DIRS "."
-                       PRIV_REQUIRES esp_driver_i2c esp_driver_gpio esp_adc
+                       PRIV_REQUIRES esp_driver_i2c esp_driver_gpio esp_driver_ledc esp_adc
                                      esp_pm esp_timer)
 
 # Stricter than IDF's defaults, for our code only, and fatal: v0.1 ships with

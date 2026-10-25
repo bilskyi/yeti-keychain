@@ -1,7 +1,7 @@
-// OLED keychain companion, v0.1.
+// OLED keychain companion, v0.2.
 //
 // Boot, then one loop: input -> policy -> face -> render -> flush -> sleep.
-// The loop blocks in vTaskDelay between frames, which is when the C3 drops
+// The loop blocks in input_wait() between frames, which is when the C3 drops
 // into automatic light sleep.
 
 #include <inttypes.h>
@@ -22,6 +22,7 @@
 #include "power/battery.h"
 #include "power/policy.h"
 #include "power/power.h"
+#include "sound/sound.h"
 
 static const char *TAG = "main";
 
@@ -69,6 +70,7 @@ static void on_input(input_event_t ev, uint32_t now, void *ctx) {
     (void)ctx;
     policy_on_event(&s_policy, ev, now_ms64());
     face_on_event(&s_face, ev, now);
+    sound_on_event(ev);
 }
 
 void app_main(void) {
@@ -81,6 +83,7 @@ void app_main(void) {
     s_battery = battery_read();
     if (brownout || s_battery.level == BATTERY_CRITICAL) lowbat_shutdown();
 
+    sound_init();
     input_init();
     input_subscribe(on_input, NULL);
     net_init();
@@ -90,8 +93,10 @@ void app_main(void) {
     policy_init(&s_policy);
     uint64_t next_battery = now_ms64() + BATTERY_SAMPLE_MS;
 
-    ESP_LOGI(TAG, "v0.1 running; buttons=%d accel=%d battery_adc=%d wifi=%d ble=%d",
-             FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_BATTERY_ADC, FEATURE_WIFI, FEATURE_BLE);
+    ESP_LOGI(TAG, "v0.2 running; buttons=%d accel=%d sound=%d battery_adc=%d wifi=%d ble=%d",
+             FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_SOUND, FEATURE_BATTERY_ADC, FEATURE_WIFI,
+             FEATURE_BLE);
+    sound_hello();
 
     for (;;) {
         const uint64_t now64 = now_ms64();
@@ -115,10 +120,12 @@ void app_main(void) {
         face_update(&s_face, now);
         render(now);
 
-        // Fast while something moves, slow while the face is still. Subtract
-        // the frame's own work so the animation keeps its pace.
-        const uint32_t period = face_is_animating(&s_face) ? FRAME_MS_ANIMATING : FRAME_MS_IDLE;
+        // Fast while something moves (on screen, or a button held / the
+        // device moving), slow while still. Subtract the frame's own work so
+        // the animation keeps its pace. An input interrupt ends the wait early.
+        const bool fast = face_is_animating(&s_face) || input_busy(now);
+        const uint32_t period = fast ? FRAME_MS_ANIMATING : FRAME_MS_IDLE;
         const uint32_t spent = (uint32_t)(now_ms64() - now64);
-        vTaskDelay(pdMS_TO_TICKS(spent < period ? period - spent : 1));
+        input_wait(spent < period ? period - spent : 1);
     }
 }
