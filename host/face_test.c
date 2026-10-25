@@ -74,7 +74,8 @@ static void test_every_expression_fits(void) {
             f.look_y = f.look_ty = -3;
             gfx_clear(&g);
             face_render(&f, &g);
-            if (e != EXPR_LOWBAT) assert(lit(&g) > 200);
+            // Dots and thin strokes light few pixels; just make sure it drew.
+            if (e != EXPR_LOWBAT) assert(lit(&g) > 60);
             assert(lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);
         }
         f.look_x = f.look_tx = f.look_y = f.look_ty = 0;
@@ -141,7 +142,7 @@ static void test_reactions(void) {
     for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
     assert(f.expr == EXPR_SURPRISED);
     for (int i = 0; i < 60; i++) face_update(&f, now += FRAME);
-    assert(f.expr == EXPR_HAPPY);  // TAP chains into happy
+    assert(f.expr == EXPR_HAPPY || f.expr == EXPR_LAUGH);  // TAP chains into a cheerful face
 
     face_on_event(&f, INPUT_DOUBLE_TAP, now);
     for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
@@ -152,6 +153,54 @@ static void test_reactions(void) {
     assert(f.look_x < 0);
     for (int i = 0; i < 80; i++) face_update(&f, now += FRAME);
     assert(f.look_x == 0);  // came back
+
+    // Shake: dizzy; shaken again while dizzy: knocked out.
+    face_on_event(&f, INPUT_SHAKE, now);
+    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+    assert(f.expr == EXPR_DIZZY);
+    assert(face_is_animating(&f));  // the spirals spin
+    face_on_event(&f, INPUT_SHAKE, now);
+    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+    assert(f.expr == EXPR_KO);
+
+    // A shake straight away, with no blink to swap on yet, still counts as
+    // "while dizzy": the pending face is what matters.
+    face_on_event(&f, INPUT_DOUBLE_TAP, now);
+    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+    face_on_event(&f, INPUT_SHAKE, now);
+    face_on_event(&f, INPUT_SHAKE, now);
+    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+    assert(f.expr == EXPR_KO);
+
+    // A pets it: something cheerful, never the face already showing.
+    for (int k = 0; k < 20; k++) {
+        const expression_t before = f.has_pending ? f.pending : f.expr;
+        face_on_event(&f, INPUT_BTN_A_SHORT, now);
+        assert(f.pending != before);
+        assert(f.pending == EXPR_HAPPY || f.pending == EXPR_LAUGH || f.pending == EXPR_WINK ||
+               f.pending == EXPR_EXCITED);
+        for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+    }
+
+    // B steps through every face except the low-battery one, then wraps.
+    show(&f, EXPR_NEUTRAL, &now);
+    int seen[EXPR_COUNT] = {0};
+    for (int k = 0; k < EXPR_LOWBAT; k++) {
+        face_on_event(&f, INPUT_BTN_B_SHORT, now);
+        for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+        seen[f.expr]++;
+    }
+    for (int e = 0; e < EXPR_LOWBAT; e++) assert(seen[e] == 1);
+    assert(f.expr == EXPR_NEUTRAL);
+
+    // Animations end, so the main loop can drop to the slow frame rate.
+    show(&f, EXPR_HAPPY, &now);
+    f.expr_since = now;
+    assert(face_is_animating(&f));
+    for (int i = 0; i < 60; i++) face_update(&f, now += FRAME);
+    f.blinking = false;
+    f.next_blink = now + 100000;
+    assert(!face_is_animating(&f));
 }
 
 static void test_night(void) {

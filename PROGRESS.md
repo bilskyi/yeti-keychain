@@ -95,6 +95,17 @@
   transistor: tunes moved to 1.5-4 kHz, drive cap 3 = loud enough (Sasha).
   Optional bridge mode (− on GPIO20) is in the code, off. ~1 in 7 double taps reads as single.
 
+- 2026-10-25 **Face redesign: "Mochi dots"** (Sasha rejected 3 static styles
+  and picked Dasai Mochi from 3 animated directions, then sent a reference
+  photo: small round eyes far apart, bold little smile). face.c redrawn;
+  new expressions SAD (mood) and LAUGH, DIZZY, KO, EXCITED, WINK (reactions).
+  Each expression animates only for a short window (face_is_animating), then
+  the loop drops to 5 fps. 2-button controls: A = pet (random cheerful face),
+  B = step through every face, A long = sleep, B long = mute, tilt = look.
+  Shake = dizzy, shake while dizzy = KO. On the panel: eyes 7 px looked too
+  small, now 10 px with every eye shape and the smile scaled; Sasha OK'd it
+  ("will improve later").
+
 ## In progress
 - Yeti: waiting for Sasha's review; then caliper measurements (boards,
   battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design

@@ -4,7 +4,7 @@
 // A weighted random walk. Weights depend on the current mood (moods have some
 // inertia and favour plausible neighbours) and on context: at night it is
 // always sleepy, and the longer nobody has touched the keychain the more
-// often it gets bored and sleepy.
+// often it gets bored: sleepy, or a little sad.
 
 #include "face/face.h"
 
@@ -12,16 +12,17 @@
 
 // WEIGHTS[from][to]. Rows need not sum to anything in particular.
 static const uint8_t WEIGHTS[EXPR_MOOD_COUNT][EXPR_MOOD_COUNT] = {
-    //              NEU  HAP  SLP  SUR  ANG  LOV
-    [EXPR_NEUTRAL]   = {30, 30, 10,  8,  5, 10},
-    [EXPR_HAPPY]     = {40, 20,  5,  8,  2, 15},
-    [EXPR_SLEEPY]    = {40, 10, 30, 10,  5,  2},
-    [EXPR_SURPRISED] = {35, 35,  5,  0, 10, 10},
-    [EXPR_ANGRY]     = {50, 15,  5, 15,  0,  5},
-    [EXPR_LOVE]      = {40, 40,  5,  5,  0,  5},
+    //              NEU  HAP  SLP  SUR  ANG  LOV  SAD
+    [EXPR_NEUTRAL]   = {30, 30, 10,  8,  4, 10,  3},
+    [EXPR_HAPPY]     = {40, 20,  5,  8,  2, 15,  1},
+    [EXPR_SLEEPY]    = {40, 10, 30, 10,  4,  2,  4},
+    [EXPR_SURPRISED] = {35, 35,  5,  0,  8, 10,  2},
+    [EXPR_ANGRY]     = {50, 15,  5, 15,  0,  5,  5},
+    [EXPR_LOVE]      = {40, 40,  5,  5,  0,  5,  1},
+    [EXPR_SAD]       = {45, 15, 15,  5,  5,  5, 10},
 };
 
-// Ignored for this long, the keychain starts getting sleepy.
+// Ignored for this long, the keychain starts getting sleepy and a bit sad.
 #define BORED_AFTER_MS (5UL * 60UL * 1000UL)
 
 expression_t mood_pick(rng_t *rng, expression_t current, const mood_ctx_t *ctx,
@@ -35,7 +36,7 @@ expression_t mood_pick(rng_t *rng, expression_t current, const mood_ctx_t *ctx,
     uint32_t total = 0;
     for (int i = 0; i < EXPR_MOOD_COUNT; i++) {
         w[i] = WEIGHTS[current][i];
-        if (i == EXPR_SLEEPY && ctx->ms_since_input >= BORED_AFTER_MS) w[i] *= 2;
+        if ((i == EXPR_SLEEPY || i == EXPR_SAD) && ctx->ms_since_input >= BORED_AFTER_MS) w[i] *= 3;
         total += w[i];
     }
 

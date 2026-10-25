@@ -5,60 +5,41 @@
 #include "config.h"
 
 // ---------------------------------------------------------------------------
-// Geometry. The face is drawn for a centred screen; the burn-in shift moves
-// it by up to BURNIN_MAX_SHIFT_PX through the gfx offset. Everything below
-// keeps a margin of at least that much plus the largest glance.
+// Geometry: the "Mochi dots" look. Two small round eyes set wide apart and a
+// bold little smile just under eye level, all near one line (Sasha's
+// reference photo, 2026-10-25). The face is drawn for a centred screen; the
+// burn-in shift moves it by up to BURNIN_MAX_SHIFT_PX through the gfx offset,
+// and everything below keeps a margin of at least that plus the largest
+// glance.
 // ---------------------------------------------------------------------------
-#define EYE_L_CX 38
-#define EYE_R_CX 90
-#define EYE_CY 28
+#define EYE_L_CX 34
+#define EYE_R_CX 94
+#define EYE_CY 30
+#define EYE_R 10  // 7 was too small on the real panel (2026-10-25)
 #define MOUTH_CX 64
-#define MOUTH_CY 52
+#define MOUTH_CY 36
+#define STROKE 3  // line weight of the smile and of ^ > < eyes
 
 #define GLANCE_X 12  // how far a glance moves the eyes sideways
 #define GLANCE_Y 3
 
 #define YAWN_MS 2600
 #define TRANSITION_HOLD_MS 1200  // TAP: surprised for this long, then happy
+#define DIZZY_MS 2500
+#define KO_MS 3000
+
+// How long each expression keeps moving after it appears. Past that the face
+// is still, so the main loop drops back to the slow frame rate (power).
+#define ANIM_BOUNCE_MS 1200  // happy hop, laugh shake, heart and star pulse
+#define ANIM_TREMBLE_MS 800  // angry
+#define ANIM_TEAR_MS 2600    // sad: one tear runs down
+#define ANIM_POP_MS 120      // surprised: eyes pop big, then settle
 
 #define OPEN_FULL 256  // eye openness is 0..256
 
-typedef enum {
-    EYE_ROUND,  // rounded rectangle, optionally lidded and/or slanted
-    EYE_ARC,    // happy "^": the bottom is cut away by an ellipse
-    EYE_HEART,
-} eye_shape_t;
-
-typedef enum {
-    MOUTH_NONE,
-    MOUTH_SMALL,  // short flat line
-    MOUTH_SMILE,
-    MOUTH_FROWN,
-    MOUTH_O,
-    MOUTH_BATTERY,  // empty battery outline, blinking
-} mouth_t;
-
-typedef struct {
-    uint8_t w, h, r;
-    uint8_t lid;    // 0..255 of the eye covered from the top
-    uint8_t slant;  // px the inner top corner is cut down (angry brows)
-    int8_t dy;      // eyes up (-) or down (+) from the centre line
-    eye_shape_t shape;
-    mouth_t mouth;
-} style_t;
-
-static const style_t STYLES[EXPR_COUNT] = {
-    [EXPR_NEUTRAL]   = {.w = 26, .h = 30, .r = 8,  .shape = EYE_ROUND, .mouth = MOUTH_SMALL},
-    [EXPR_HAPPY]     = {.w = 26, .h = 26, .r = 12, .shape = EYE_ARC,   .mouth = MOUTH_SMILE, .dy = -1},
-    [EXPR_SLEEPY]    = {.w = 26, .h = 30, .r = 8,  .lid = 150, .dy = 2, .shape = EYE_ROUND, .mouth = MOUTH_SMALL},
-    [EXPR_SURPRISED] = {.w = 30, .h = 34, .r = 15, .dy = -2, .shape = EYE_ROUND, .mouth = MOUTH_O},
-    [EXPR_ANGRY]     = {.w = 26, .h = 26, .r = 6,  .slant = 11, .dy = 1, .shape = EYE_ROUND, .mouth = MOUTH_FROWN},
-    [EXPR_LOVE]      = {.w = 30, .h = 28, .r = 0,  .shape = EYE_HEART, .mouth = MOUTH_SMILE},
-    [EXPR_LOWBAT]    = {.w = 26, .h = 30, .r = 6,  .lid = 190, .dy = 3, .shape = EYE_ROUND, .mouth = MOUTH_BATTERY},
-};
-
 static const char *const NAMES[EXPR_COUNT] = {
-    "neutral", "happy", "sleepy", "surprised", "angry", "love", "lowbat",
+    "neutral", "happy", "sleepy", "surprised", "angry", "love", "sad",
+    "laugh",   "dizzy", "ko",     "excited",   "wink",  "lowbat",
 };
 
 const char *face_expression_name(expression_t e) {
@@ -92,6 +73,7 @@ void face_init(face_t *f, uint32_t seed, uint32_t now) {
     *f = (face_t){0};
     rng_seed(&f->rng, seed);
     f->expr = EXPR_NEUTRAL;
+    f->expr_since = now;
     f->expr_until = now + MOOD_MIN_MS;
     f->now = now;
     f->last_input = now;
@@ -103,9 +85,12 @@ void face_set_expression(face_t *f, expression_t e, uint32_t now, uint32_t hold_
     if ((unsigned)e >= EXPR_COUNT) return;
     f->expr_until = now + hold_ms;
     f->has_after = false;
-    if (e == f->expr && !f->has_pending) return;
-    // Swap at the bottom of a blink: the eyes close on one expression and
-    // open on the next, which hides the change of shape.
+    if (e == f->expr && !f->has_pending) {
+        f->expr_since = now;  // same face again: replay its animation
+        return;
+    }
+    // Swap at the bottom of a blink: the eyes squash shut on one expression
+    // and pop open on the next, which hides the change of shape.
     f->pending = e;
     f->has_pending = true;
     if (!f->blinking) start_blink(f, now);
@@ -140,22 +125,37 @@ static void react(face_t *f, expression_t e, uint32_t now, uint32_t hold_ms) {
     face_set_expression(f, e, now, hold_ms);
 }
 
+static void then(face_t *f, expression_t e) {
+    f->after = e;
+    f->has_after = true;
+}
+
+static expression_t showing(const face_t *f) {
+    return f->has_pending ? f->pending : f->expr;
+}
+
 void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
     f->last_input = now;
     switch (ev) {
         case INPUT_TAP:
+            // A poke: startled, then either pleased or giggling.
             react(f, EXPR_SURPRISED, now, TRANSITION_HOLD_MS);
-            f->after = EXPR_HAPPY;
-            f->has_after = true;
+            then(f, rng_chance(&f->rng, 50) ? EXPR_HAPPY : EXPR_LAUGH);
             break;
         case INPUT_DOUBLE_TAP:
             react(f, EXPR_LOVE, now, 4000);
             break;
         case INPUT_SHAKE:
-            react(f, EXPR_ANGRY, now, 2500);
+            // Shaken while still dizzy: knocked out.
+            if (showing(f) == EXPR_DIZZY) {
+                react(f, EXPR_KO, now, KO_MS);
+                then(f, EXPR_SAD);
+            } else {
+                react(f, EXPR_DIZZY, now, DIZZY_MS);
+                then(f, EXPR_ANGRY);
+            }
             break;
         case INPUT_TILT_LEFT:
-        case INPUT_BTN_B_SHORT:
             face_look(f, -GLANCE_X, 0, now, 2000);
             break;
         case INPUT_TILT_RIGHT:
@@ -163,9 +163,21 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
             face_look(f, GLANCE_X, 0, now, 2000);
             break;
         case INPUT_BTN_A_SHORT: {
-            // Cycle through every mood expression, mostly for testing faces.
-            const expression_t base = f->has_pending ? f->pending : f->expr;
-            react(f, (expression_t)((base + 1) % EXPR_MOOD_COUNT), now, 8000);
+            // A: pet it. Something cheerful, never the same twice in a row.
+            static const expression_t PETTED[] = {EXPR_HAPPY, EXPR_LAUGH, EXPR_WINK, EXPR_EXCITED};
+            const int n = (int)(sizeof(PETTED) / sizeof(PETTED[0]));
+            expression_t e;
+            do {
+                e = PETTED[rng_range(&f->rng, 0, (uint32_t)n - 1)];
+            } while (e == showing(f));
+            react(f, e, now, e == EXPR_WINK ? 1500 : 3000);
+            if (e == EXPR_WINK) then(f, EXPR_HAPPY);
+            break;
+        }
+        case INPUT_BTN_B_SHORT: {
+            // B: step through every face, the way to see them all.
+            const expression_t next = (expression_t)((showing(f) + 1) % EXPR_LOWBAT);
+            react(f, next, now, 8000);
             break;
         }
         case INPUT_BTN_B_LONG:
@@ -212,6 +224,7 @@ void face_update(face_t *f, uint32_t now) {
         const uint32_t t = now - f->blink_start;
         if (f->has_pending && t >= BLINK_DURATION_MS / 2) {
             f->expr = f->pending;
+            f->expr_since = now;
             f->has_pending = false;
         }
         if (t >= BLINK_DURATION_MS) {
@@ -282,14 +295,40 @@ void face_update(face_t *f, uint32_t now) {
     }
 }
 
+// How long the current expression keeps moving after it appeared (0 = still).
+static uint32_t anim_ms(expression_t e) {
+    switch (e) {
+        case EXPR_HAPPY:
+        case EXPR_LAUGH:
+        case EXPR_LOVE:
+        case EXPR_EXCITED: return ANIM_BOUNCE_MS;
+        case EXPR_ANGRY: return ANIM_TREMBLE_MS;
+        case EXPR_SAD: return ANIM_TEAR_MS;
+        case EXPR_SURPRISED: return ANIM_POP_MS;
+        case EXPR_DIZZY: return DIZZY_MS;  // spins for as long as it shows
+        case EXPR_KO: return KO_MS;
+        default: return 0;
+    }
+}
+
 bool face_is_animating(const face_t *f) {
-    return f->blinking || f->has_pending || f->idle == IDLE_YAWN ||
-           f->look_x != f->look_tx || f->look_y != f->look_ty;
+    if (f->blinking || f->has_pending || f->idle == IDLE_YAWN || f->look_x != f->look_tx ||
+        f->look_y != f->look_ty) {
+        return true;
+    }
+    return !f->night && f->now - f->expr_since < anim_ms(f->expr);
 }
 
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
+
+// Sine of t/period, one full turn per period, scaled to +-amp. A 16-step
+// table is plenty for a few pixels of wobble and needs no maths library.
+static int wave(uint32_t t, uint32_t period, int amp) {
+    static const int8_t SIN16[16] = {0, 38, 71, 92, 100, 92, 71, 38, 0, -38, -71, -92, -100, -92, -71, -38};
+    return SIN16[(t * 16 / period) % 16] * amp / 100;
+}
 
 // 0..256: how far into the yawn the mouth is open. Opens, holds, closes.
 static int yawn_amount(const face_t *f) {
@@ -314,99 +353,96 @@ static int openness(const face_t *f) {
     return open;
 }
 
-// Shut eye, sleeping: a shallow downward curve, 2 px thick.
-static void draw_closed_eye(gfx_t *g, int cx, int cy, int w) {
-    const int x0 = cx - w / 2, x1 = cx + w / 2 - 1;
-    for (int t = 0; t < 2; t++) {
-        gfx_line(g, x0, cy - 2 + t, x0 + 4, cy + t, GFX_WHITE);
-        gfx_hline(g, x0 + 4, x1 - 4, cy + t, GFX_WHITE);
-        gfx_line(g, x1 - 4, cy + t, x1, cy - 2 + t, GFX_WHITE);
+// Round eye squashed vertically by `open`; a flat bar once nearly shut. The
+// squash also widens it a little, which is what makes the blink look bouncy.
+static void draw_dot(gfx_t *g, int cx, int cy, int r, int open) {
+    const int ry = r * open / OPEN_FULL;
+    if (ry < 2) {
+        gfx_fill_rect(g, cx - r, cy - 1, 2 * r + 1, 2, GFX_WHITE);
+        return;
+    }
+    gfx_fill_ellipse(g, cx, cy, r + (r - ry) / 3, ry, GFX_WHITE);
+}
+
+// Thin arc of half-width w: d > 0 sags down (smile), d < 0 bows up (frown).
+static void draw_arc(gfx_t *g, int cx, int cy, int w, int d) {
+    for (int x = -w; x <= w; x++) {
+        const int y = cy + d * (w * w - x * x) / (w * w);
+        gfx_fill_rect(g, cx + x, y, 1, STROKE, GFX_WHITE);
     }
 }
 
-static void draw_heart(gfx_t *g, int cx, int cy, int s, int open) {
-    // Two lobes and a point, squashed vertically while blinking.
-    const int lr = s / 4 + 1;
-    const int lry = lr * open / OPEN_FULL;
-    const int lobe_y = cy - (s / 5) * open / OPEN_FULL;
-    gfx_fill_ellipse(g, cx - s / 4, lobe_y, lr, lry, GFX_WHITE);
-    gfx_fill_ellipse(g, cx + s / 4, lobe_y, lr, lry, GFX_WHITE);
-    gfx_fill_triangle(g, cx - s / 2, lobe_y + lry / 3, cx + s / 2, lobe_y + lry / 3,
-                      cx, cy + (s / 2) * open / OPEN_FULL, GFX_WHITE);
+// Thick straight stroke, STROKE px tall.
+static void stroke(gfx_t *g, int x0, int y0, int x1, int y1) {
+    for (int k = 0; k < STROKE; k++) gfx_line(g, x0, y0 + k, x1, y1 + k, GFX_WHITE);
 }
 
-static void draw_eye(gfx_t *g, const style_t *s, int cx, int cy, int open, bool left) {
-    const int h = s->h * open / OPEN_FULL;
-    if (h < 3) {
-        // Mid-blink: a straight line reads better than a 1-2 px sliver.
-        gfx_fill_rect(g, cx - s->w / 2 + 2, cy - 1, s->w - 4, 2, GFX_WHITE);
-        return;
-    }
-    if (s->shape == EYE_HEART) {
-        draw_heart(g, cx, cy, s->w, open);
-        return;
-    }
+static void draw_caret(gfx_t *g, int cx, int cy) {  // ^
+    stroke(g, cx - 9, cy + 3, cx, cy - 6);
+    stroke(g, cx, cy - 6, cx + 9, cy + 3);
+}
 
-    const int x = cx - s->w / 2;
-    const int y = cy - h / 2;
-    gfx_fill_rrect(g, x, y, s->w, h, s->r, GFX_WHITE);
-
-    if (s->shape == EYE_ARC) {
-        // Carve the bottom out with a wide ellipse, leaving a "^" arch.
-        gfx_fill_ellipse(g, cx, y + h + h / 6, s->w / 2 + 5, h * 3 / 4, GFX_BLACK);
-        return;
-    }
-    if (s->lid) {
-        gfx_fill_rect(g, x - 1, y - 1, s->w + 2, 1 + h * s->lid / 256, GFX_BLACK);
-    }
-    if (s->slant) {
-        // Cut the inner top corner: brows angled down toward the nose.
-        const int sl = s->slant * open / OPEN_FULL;
-        if (left) {
-            gfx_fill_triangle(g, x - 1, y - 1, x + s->w, y - 1, x + s->w, y + sl, GFX_BLACK);
-        } else {
-            gfx_fill_triangle(g, x - 1, y - 1, x + s->w, y - 1, x - 1, y + sl, GFX_BLACK);
-        }
+static void draw_chevron(gfx_t *g, int cx, int cy, bool right) {  // > or <
+    const int s = right ? 1 : -1;
+    for (int k = 0; k < STROKE; k++) {
+        gfx_line(g, cx - 6 * s + k, cy - 7, cx + 6 * s + k, cy, GFX_WHITE);
+        gfx_line(g, cx + 6 * s + k, cy, cx - 6 * s + k, cy + 7, GFX_WHITE);
     }
 }
 
-static void draw_mouth(gfx_t *g, mouth_t m, int cx, int cy, uint32_t now) {
-    switch (m) {
-        case MOUTH_NONE:
-            break;
-        case MOUTH_SMALL:
-            gfx_fill_rect(g, cx - 4, cy, 9, 2, GFX_WHITE);
-            break;
-        case MOUTH_SMILE:
-            // Lower half of a ring.
-            gfx_fill_ellipse(g, cx, cy - 2, 7, 5, GFX_WHITE);
-            gfx_fill_ellipse(g, cx, cy - 2, 5, 3, GFX_BLACK);
-            gfx_fill_rect(g, cx - 8, cy - 8, 17, 6, GFX_BLACK);
-            break;
-        case MOUTH_FROWN:
-            // Upper half of a ring.
-            gfx_fill_ellipse(g, cx, cy + 4, 7, 5, GFX_WHITE);
-            gfx_fill_ellipse(g, cx, cy + 4, 5, 3, GFX_BLACK);
-            gfx_fill_rect(g, cx - 8, cy + 5, 17, 6, GFX_BLACK);
-            break;
-        case MOUTH_O:
-            gfx_fill_ellipse(g, cx, cy, 4, 4, GFX_WHITE);
-            gfx_fill_ellipse(g, cx, cy, 2, 2, GFX_BLACK);
-            break;
-        case MOUTH_BATTERY:
-            // Empty battery, outline blinking at 1 Hz.
-            if ((now / 500) % 2 == 0) {
-                gfx_rect(g, cx - 8, cy - 4, 15, 9, GFX_WHITE);
-                gfx_fill_rect(g, cx + 7, cy - 2, 2, 5, GFX_WHITE);
-            }
-            break;
+static void draw_x(gfx_t *g, int cx, int cy) {
+    for (int k = 0; k < STROKE; k++) {
+        gfx_line(g, cx - 7 + k, cy - 7, cx + 7 + k, cy + 7, GFX_WHITE);
+        gfx_line(g, cx + 7 + k, cy - 7, cx - 7 + k, cy + 7, GFX_WHITE);
     }
+}
+
+static void draw_heart(gfx_t *g, int cx, int cy, int s) {
+    const int r = s / 4 + 1;
+    gfx_fill_circle(g, cx - s / 4, cy - s / 6, r, GFX_WHITE);
+    gfx_fill_circle(g, cx + s / 4, cy - s / 6, r, GFX_WHITE);
+    gfx_fill_triangle(g, cx - s / 2, cy - s / 10, cx + s / 2, cy - s / 10, cx, cy + s / 2,
+                      GFX_WHITE);
+}
+
+static void draw_star(gfx_t *g, int cx, int cy, int s) {  // four-point sparkle
+    gfx_fill_triangle(g, cx - s, cy, cx + s, cy, cx, cy - s - s / 2, GFX_WHITE);
+    gfx_fill_triangle(g, cx - s, cy, cx + s, cy, cx, cy + s + s / 2, GFX_WHITE);
+    gfx_fill_triangle(g, cx, cy - s, cx, cy + s, cx - s - s / 2, cy, GFX_WHITE);
+    gfx_fill_triangle(g, cx, cy - s, cx, cy + s, cx + s + s / 2, cy, GFX_WHITE);
+}
+
+// Spiral of 2 px line segments turning by `phase` (0..63, one turn): about
+// 2.3 turns growing to 11 px, the proportions of the approved concept.
+static void draw_spiral(gfx_t *g, int cx, int cy, int phase) {
+    static const int16_t C[64] = {256, 255, 251, 245, 237, 226, 213, 198, 181, 162, 142, 121, 98, 74, 50, 25, 0, -25, -50, -74, -98, -121, -142, -162, -181, -198, -213, -226, -237, -245, -251, -255, -256, -255, -251, -245, -237, -226, -213, -198, -181, -162, -142, -121, -98, -74, -50, -25, 0, 25, 50, 74, 98, 121, 142, 162, 181, 198, 213, 226, 237, 245, 251, 255};  // unit circle, x256
+    int px = cx, py = cy;
+    for (int s = 1; s <= 36; s++) {
+        const int a = (phase + s * 4) % 64;  // ~0.4 rad per segment
+        const int r = s * 11 / 36;
+        const int x = cx + C[a] * r / 256, y = cy + C[(a + 48) % 64] * r / 256;
+        gfx_line(g, px, py, x, y, GFX_WHITE);
+        gfx_line(g, px + 1, py, x + 1, y, GFX_WHITE);
+        px = x;
+        py = y;
+    }
+}
+
+static void draw_tear(gfx_t *g, int x, int y) {
+    gfx_fill_triangle(g, x, y - 4, x - 2, y, x + 2, y, GFX_WHITE);
+    gfx_fill_circle(g, x, y + 1, 2, GFX_WHITE);
+}
+
+// Open mouth: lower half of an ellipse (laughing, excited).
+static void draw_open_mouth(gfx_t *g, int cx, int cy, int rx, int ry) {
+    gfx_fill_ellipse(g, cx, cy, rx, ry, GFX_WHITE);
+    gfx_fill_rect(g, cx - rx - 1, cy - ry - 1, 2 * rx + 3, ry + 1, GFX_BLACK);
 }
 
 static void draw_yawn(gfx_t *g, int cx, int cy, int amount) {
-    const int ry = 1 + 6 * amount / 256;
-    gfx_fill_ellipse(g, cx, cy, 5, ry, GFX_WHITE);
-    if (ry >= 3) gfx_fill_ellipse(g, cx, cy, 3, ry - 2, GFX_BLACK);
+    const int ry = 1 + 5 * amount / 256;
+    gfx_fill_ellipse(g, cx, cy, 4, ry, GFX_WHITE);
+    if (ry >= 3) gfx_fill_ellipse(g, cx, cy, 2, ry - 2, GFX_BLACK);
 }
 
 static void draw_z(gfx_t *g, int x, int y, int size) {
@@ -419,35 +455,128 @@ static void draw_z(gfx_t *g, int x, int y, int size) {
 static void draw_zzz(gfx_t *g, uint32_t now) {
     const int phase = (int)((now / 150) % 24);
     const int p2 = (phase + 12) % 24;
-    draw_z(g, 108 + phase / 6, 16 - phase / 2, 5);
-    draw_z(g, 106 + p2 / 6, 18 - p2 / 2, 3);
+    draw_z(g, 108 + phase / 6, 22 - phase / 2, 5);
+    draw_z(g, 106 + p2 / 6, 24 - p2 / 2, 3);
 }
 
 void face_render(const face_t *f, gfx_t *g) {
-    const style_t *s = &STYLES[f->expr];
-
     if (f->night) {
-        // Asleep: shut eyes light far fewer pixels than open ones, which is
-        // also what we want at night for power.
-        draw_closed_eye(g, EYE_L_CX, EYE_CY + 4, s->w);
-        draw_closed_eye(g, EYE_R_CX, EYE_CY + 4, s->w);
+        // Asleep: two flat lines and drifting z's. Far fewer lit pixels than
+        // open eyes, which is also what we want at night for power.
+        gfx_fill_rect(g, EYE_L_CX - EYE_R, EYE_CY + 2, 2 * EYE_R, 2, GFX_WHITE);
+        gfx_fill_rect(g, EYE_R_CX - EYE_R, EYE_CY + 2, 2 * EYE_R, 2, GFX_WHITE);
         draw_zzz(g, f->now);
         return;
     }
 
-    const int open = openness(f);
-    const int ey = EYE_CY + s->dy + f->look_y;
-    draw_eye(g, s, EYE_L_CX + f->look_x, ey, open, true);
-    draw_eye(g, s, EYE_R_CX + f->look_x, ey, open, false);
+    const uint32_t t = f->now - f->expr_since;
+    const bool moving = t < anim_ms(f->expr);
+    int dx = f->look_x, dy = f->look_y;
 
-    const int mx = MOUTH_CX + f->look_x / 2;
-    const int my = MOUTH_CY + f->look_y / 2;
+    // Whole-face motion: happy hops, laugh and anger shake.
+    if (moving && (f->expr == EXPR_HAPPY || f->expr == EXPR_EXCITED)) dy -= abs(wave(t, 600, 2));
+    if (moving && (f->expr == EXPR_LAUGH || f->expr == EXPR_ANGRY)) dx += (t / 66) % 2 ? 1 : -1;
+
+    const int lx = EYE_L_CX + dx, rx = EYE_R_CX + dx, ey = EYE_CY + dy;
+    const int mx = MOUTH_CX + dx / 2, my = MOUTH_CY + dy / 2;
+    const int open = openness(f);
     const int yawn = yawn_amount(f);
-    if (yawn) {
-        draw_yawn(g, mx, my, yawn);
-    } else {
-        draw_mouth(g, s->mouth, mx, my, f->now);
+
+    switch (f->expr) {
+        case EXPR_NEUTRAL:
+            draw_dot(g, lx, ey, EYE_R, open);
+            draw_dot(g, rx, ey, EYE_R, open);
+            draw_arc(g, mx, my, 14, 5);
+            break;
+        case EXPR_HAPPY:
+            draw_caret(g, lx, ey);
+            draw_caret(g, rx, ey);
+            draw_arc(g, mx, my, 15, 7);
+            break;
+        case EXPR_SLEEPY:
+            draw_dot(g, lx, ey + 2, EYE_R, open / 3);  // heavy lids: a squashed dot
+            draw_dot(g, rx, ey + 2, EYE_R, open / 3);
+            gfx_fill_rect(g, mx - 3, my + 2, 6, 2, GFX_WHITE);
+            draw_zzz(g, f->now);
+            break;
+        case EXPR_SURPRISED: {
+            const int r = t < ANIM_POP_MS ? EYE_R + 4 : EYE_R + 2;
+            draw_dot(g, lx, ey - 1, r, open);
+            draw_dot(g, rx, ey - 1, r, open);
+            gfx_fill_circle(g, mx, my + 2, 3, GFX_WHITE);
+            gfx_fill_circle(g, mx, my + 2, 1, GFX_BLACK);
+            break;
+        }
+        case EXPR_ANGRY:
+            draw_dot(g, lx, ey + 2, EYE_R - 1, open);
+            draw_dot(g, rx, ey + 2, EYE_R - 1, open);
+            for (int k = 0; k < STROKE; k++) {  // brows slanting down toward the middle
+                gfx_line(g, lx - 12, ey - 12 + k, lx + 8, ey - 5 + k, GFX_WHITE);
+                gfx_line(g, rx + 12, ey - 12 + k, rx - 8, ey - 5 + k, GFX_WHITE);
+            }
+            draw_arc(g, mx, my + 6, 11, -4);
+            break;
+        case EXPR_LOVE: {
+            const int s = 21 + (moving ? wave(t, 500, 2) : 0);
+            draw_heart(g, lx, ey, s);
+            draw_heart(g, rx, ey, s);
+            draw_arc(g, mx, my, 14, 5);
+            break;
+        }
+        case EXPR_SAD:
+            draw_dot(g, lx - 2, ey + 3, EYE_R - 1, open);
+            draw_dot(g, rx - 2, ey + 3, EYE_R - 1, open);
+            draw_arc(g, mx - 2, my + 7, 11, -5);
+            if (moving) draw_tear(g, lx - 8, ey + 15 + (int)(t * 12 / ANIM_TEAR_MS));
+            break;
+        case EXPR_LAUGH:
+            draw_chevron(g, lx, ey, true);
+            draw_chevron(g, rx, ey, false);
+            draw_open_mouth(g, mx, my + 1, 6, 4 + (moving && (t / 100) % 2));
+            break;
+        case EXPR_DIZZY: {
+            const int phase = (int)(t / 16 % 64);
+            draw_spiral(g, lx, ey, phase);
+            draw_spiral(g, rx, ey, (phase + 32) % 64);
+            for (int x = -8; x <= 8; x++) gfx_fill_rect(g, mx + x, my + 1 + wave(t + (uint32_t)x * 40, 600, 1), 1, 2, GFX_WHITE);
+            break;
+        }
+        case EXPR_KO: {
+            draw_x(g, lx, ey);
+            draw_x(g, rx, ey);
+            gfx_fill_rect(g, mx - 5, my + 1, 11, 2, GFX_WHITE);
+            // A star circling overhead.
+            draw_star(g, MOUTH_CX + dx + wave(t, 1200, 28), 11 + dy + wave(t + 300, 1200, 2), 2);
+            break;
+        }
+        case EXPR_EXCITED: {
+            const int s = 7 + (moving ? wave(t, 400, 2) : 0);
+            draw_star(g, lx, ey, s);
+            draw_star(g, rx, ey, s);
+            draw_open_mouth(g, mx, my + 1, 6, 5);
+            break;
+        }
+        case EXPR_WINK:
+            draw_dot(g, lx, ey, EYE_R, open);
+            draw_caret(g, rx, ey);
+            draw_arc(g, mx, my, 15, 6);
+            break;
+        case EXPR_LOWBAT:
+            draw_dot(g, lx, ey + 3, EYE_R, open / 4);
+            draw_dot(g, rx, ey + 3, EYE_R, open / 4);
+            // Empty battery for a mouth, outline blinking at 1 Hz.
+            if ((f->now / 500) % 2 == 0) {
+                gfx_rect(g, mx - 8, my, 15, 9, GFX_WHITE);
+                gfx_fill_rect(g, mx + 7, my + 2, 2, 5, GFX_WHITE);
+            }
+            break;
+        case EXPR_COUNT:
+            break;
     }
 
-    if (f->expr == EXPR_SLEEPY) draw_zzz(g, f->now);
+    // A yawn opens the mouth over whatever the expression has there.
+    if (yawn) {
+        gfx_fill_rect(g, mx - 13, my - 1, 27, 9, GFX_BLACK);
+        draw_yawn(g, mx, my + 3, yawn);
+    }
 }

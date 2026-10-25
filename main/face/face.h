@@ -22,18 +22,26 @@
 #include "input/input_event.h"
 
 typedef enum {
+    // Moods: the mood machine drifts between these on its own.
     EXPR_NEUTRAL = 0,
     EXPR_HAPPY,
     EXPR_SLEEPY,
     EXPR_SURPRISED,
     EXPR_ANGRY,
     EXPR_LOVE,
+    EXPR_SAD,
+    // Reactions only: input triggers them, the mood machine never picks them.
+    EXPR_LAUGH,    // > <
+    EXPR_DIZZY,    // spinning spirals
+    EXPR_KO,       // X X, a star circling
+    EXPR_EXCITED,  // star eyes
+    EXPR_WINK,
     EXPR_LOWBAT,  // never picked by the mood machine; battery code sets it
     EXPR_COUNT
 } expression_t;
 
-// The ones the mood machine and BTN_A cycle through.
-#define EXPR_MOOD_COUNT EXPR_LOWBAT
+// The ones the mood machine picks from.
+#define EXPR_MOOD_COUNT EXPR_LAUGH
 
 typedef enum {
     IDLE_NONE = 0,
@@ -46,6 +54,7 @@ typedef struct {
 
     // What is drawn, and what it changes to at the bottom of the current blink.
     expression_t expr;
+    uint32_t expr_since;  // when expr was swapped in: drives its animation
     expression_t pending;
     bool has_pending;
 
