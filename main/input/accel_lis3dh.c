@@ -25,6 +25,7 @@
 #include "i2c_bus.h"
 #include "input/input.h"
 #include "input/motion_logic.h"
+#include "input/orient.h"
 
 static const char *TAG = "lis3dh";
 
@@ -53,6 +54,10 @@ static i2c_master_dev_handle_t s_dev;
 static motion_t s_motion;
 static volatile bool s_masked;
 static bool s_ready;
+static int s_last_mg[3];   // screen frame
+static int s_last_raw[3];  // board frame
+static bool s_has_sample;
+static int8_t s_orient[3];  // input/orient.h; all zero = board axes as they are
 
 static esp_err_t write_reg(uint8_t reg, uint8_t val) {
     const uint8_t buf[2] = {reg, val};
@@ -172,6 +177,10 @@ static void read_motion(uint32_t now_ms) {
         // Left-justified 10-bit: shift the low 6 junk bits out, keeping the sign.
         mg[i] = ((int16_t)(b[2 * i] | (b[2 * i + 1] << 8)) >> 6) * MG_PER_LSB;
     }
+    for (int i = 0; i < 3; i++) s_last_raw[i] = mg[i];
+    orient_apply(s_orient, s_last_raw, mg);
+    for (int i = 0; i < 3; i++) s_last_mg[i] = mg[i];
+    s_has_sample = true;
     const input_event_t ev = motion_update(&s_motion, mg[0], mg[1], mg[2], now_ms);
     if (ev != INPUT_NONE) input_post(ev);
 }
@@ -198,6 +207,22 @@ static void arm_wakeup(void) {
     esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_ACCEL_INT1, ESP_GPIO_WAKEUP_GPIO_HIGH);
 }
 
+bool input_accel_mg(int mg[3]) {
+    if (!s_has_sample) return false;
+    for (int i = 0; i < 3; i++) mg[i] = s_last_mg[i];
+    return true;
+}
+
+bool input_accel_raw_mg(int mg[3]) {
+    if (!s_has_sample) return false;
+    for (int i = 0; i < 3; i++) mg[i] = s_last_raw[i];
+    return true;
+}
+
+void input_accel_set_orient(const int8_t map[3]) {
+    for (int i = 0; i < 3; i++) s_orient[i] = map[i];
+}
+
 const input_source_t input_source_accel = {
     .name = "lis3dh",
     .init = init,
@@ -205,5 +230,25 @@ const input_source_t input_source_accel = {
     .arm_wakeup = arm_wakeup,
     .busy = busy,
 };
+
+#else
+
+#include <stdbool.h>
+
+#include "input/input.h"
+
+bool input_accel_mg(int mg[3]) {
+    (void)mg;
+    return false;
+}
+
+bool input_accel_raw_mg(int mg[3]) {
+    (void)mg;
+    return false;
+}
+
+void input_accel_set_orient(const int8_t map[3]) {
+    (void)map;
+}
 
 #endif

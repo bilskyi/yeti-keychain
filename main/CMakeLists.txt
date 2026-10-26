@@ -7,6 +7,7 @@ set(KC_SRCS
     i2c_bus.c
     display/gfx.c
     display/display.c
+    display/font.c
     face/face.c
     face/mood.c
     face/hud.c
@@ -21,11 +22,22 @@ set(KC_SRCS
     power/battery.c
     power/battery_logic.c
     sound/sound.c
+    storage/storage.c
+    app/app.c
+    app/game_luck.c
+    app/game_reaction.c
+    app/game_catch.c
+    app/game_flappy.c
+    app/game_snake.c
+    app/game_memory.c
+    app/care.c
+    pet/pet.c
+    input/orient.c
     net/net.c)
 
 idf_component_register(SRCS ${KC_SRCS}
                        INCLUDE_DIRS "."
-                       PRIV_REQUIRES esp_driver_i2c esp_driver_gpio esp_driver_ledc esp_adc
+                       PRIV_REQUIRES esp_driver_i2c esp_driver_gpio esp_driver_ledc esp_adc nvs_flash
                                      esp_pm esp_timer)
 
 # Stricter than IDF's defaults, for our code only, and fatal: v0.1 ships with

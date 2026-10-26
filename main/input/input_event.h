@@ -25,6 +25,11 @@ typedef enum {
     INPUT_BTN_B_LONG,
     INPUT_BTN_C_SHORT,
     INPUT_BTN_C_LONG,
+    // The moment a button goes down (debounced), before short/long is known.
+    // Games use these for timing; the face ignores them.
+    INPUT_BTN_A_PRESS,
+    INPUT_BTN_B_PRESS,
+    INPUT_BTN_C_PRESS,
 
     INPUT_EVENT_COUNT
 } input_event_t;

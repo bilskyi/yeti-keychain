@@ -25,11 +25,11 @@ static const char *TAG = "buttons";
 
 static const struct {
     gpio_num_t pin;
-    input_event_t ev_short, ev_long;
+    input_event_t ev_press, ev_short, ev_long;
 } BUTTONS[] = {
-    {PIN_BTN_A, INPUT_BTN_A_SHORT, INPUT_BTN_A_LONG},
-    {PIN_BTN_B, INPUT_BTN_B_SHORT, INPUT_BTN_B_LONG},
-    {PIN_BTN_C, INPUT_BTN_C_SHORT, INPUT_BTN_C_LONG},
+    {PIN_BTN_A, INPUT_BTN_A_PRESS, INPUT_BTN_A_SHORT, INPUT_BTN_A_LONG},
+    {PIN_BTN_B, INPUT_BTN_B_PRESS, INPUT_BTN_B_SHORT, INPUT_BTN_B_LONG},
+    {PIN_BTN_C, INPUT_BTN_C_PRESS, INPUT_BTN_C_SHORT, INPUT_BTN_C_LONG},
 };
 #define NBUTTONS ((int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])))
 
@@ -76,6 +76,7 @@ static void poll(uint32_t now_ms) {
     for (int i = 0; i < NBUTTONS; i++) {
         const bool pressed = gpio_get_level(BUTTONS[i].pin) == 0;
         switch (button_update(&s_btn[i], pressed, now_ms)) {
+            case BUTTON_PRESS: input_post(BUTTONS[i].ev_press); break;
             case BUTTON_SHORT: input_post(BUTTONS[i].ev_short); break;
             case BUTTON_LONG: input_post(BUTTONS[i].ev_long); break;
             case BUTTON_NONE: break;

@@ -18,20 +18,26 @@ static bool scheduled_night(uint64_t now_ms, uint64_t *cycle) {
     return now_ms % len >= NIGHT_CYCLE_AWAKE_MS;
 }
 
-void policy_on_event(policy_t *p, input_event_t ev, uint64_t now_ms) {
+void policy_note_activity(policy_t *p, uint64_t now_ms) {
     uint64_t cycle;
-    const bool sched = scheduled_night(now_ms, &cycle);
+    p->forced = false;
+    if (scheduled_night(now_ms, &cycle)) {
+        p->woken = true;
+        p->woken_cycle = cycle;
+    }
+}
 
+void policy_on_event(policy_t *p, input_event_t ev, uint64_t now_ms) {
     if (ev == INPUT_BTN_A_LONG && !p->night) {
         p->forced = true;
         return;
     }
     // Anything else (or BTN_A_LONG while asleep) wakes up.
-    p->forced = false;
-    if (sched) {
-        p->woken = true;
-        p->woken_cycle = cycle;
-    }
+    policy_note_activity(p, now_ms);
+}
+
+void policy_sleep(policy_t *p) {
+    p->forced = true;
 }
 
 bool policy_update(policy_t *p, uint64_t now_ms) {

@@ -106,6 +106,33 @@
   small, now 10 px with every eye shape and the smile scaled; Sasha OK'd it
   ("will improve later").
 
+- 2026-10-25 **v0.3: menu + games** (`main/app/`, pure C, host-tested like
+  the face; hardware via app_env_t). B long opens the menu (B next, A choose,
+  B back, B long to face; 15 s idle closes it, game screens 30 s unless in
+  play). Games: Dice (shake/tap/A), Coin (tap/A, heads = Yeti face), Reaction
+  (A press timing; includes ~30-60 ms debounce + frame latency), Catch (tilt
+  = position; only offered with an accelerometer), Flappy (A flap, fixed
+  33 ms physics ticks). Sound on/off moved into the menu. Best scores + mute
+  in NVS (`storage/`, versioned blob). New INPUT_BTN_x_PRESS events (press-
+  down) for games; policy_note_activity so A long in a game isn't "sleep".
+  5x7 font (`display/font.c`). host/app_test.c caught a wrap bug in
+  app_elapsed (future times read as elapsed). Flashed; not yet played by Sasha.
+
+- 2026-10-26 **v0.4: pet life** ("too boring, add more features").
+  `pet/`: food, fun, energy (0-100) tick per powered minute (no clock across
+  power-off, the pet pauses), XP and levels from games and feeding, age;
+  saved every 10 pet-minutes. Needs make the mood sadder or sleepier and show
+  a thought bubble (fish / ball / z). Menu is now two lists: FEED (fish,
+  berry, cake; refuses when full), GAMES >, PET (stats), SLEEP, SOUND, SETUP,
+  BACK; the games list adds Snake (A left, B right, press events, turn queue)
+  and Memory (Simon with the two eyes, A/B). LEVEL UP banner. Face: eyes follow
+  tilt, upside down = SCARED (needs calibration), picked up after 90 s still =
+  hi, freefall = WHEE, idle sneeze and hum; sounds through face cues.
+  SETUP calibrates the LIS3DH (lay flat, hold upright -> `input/orient.c`
+  board-to-screen map, saved in NVS), so the ACCEL_TILT placeholders now
+  describe the screen frame (sign -1). NVS record v2, migrates v1 scores.
+  Host tests for all of it; flashed, boot log clean, not yet played.
+
 ## In progress
 - Yeti: waiting for Sasha's review; then caliper measurements (boards,
   battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design

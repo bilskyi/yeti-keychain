@@ -97,11 +97,13 @@
 // that starts between two idle frames is still sampled at ~30 Hz.
 #define ACCEL_ACTIVE_DEV_MG 250
 
-// Tilt: which board axis points left-right on the face once it is in the case
-// (0 = X, 1 = Y, 2 = Z) and its sign. PLACEHOLDER until the board is mounted:
-// if tilting left makes the eyes look right, flip the sign.
+// Tilt: which axis points left-right on the face (0 = X, 1 = Y, 2 = Z) and
+// its sign. Samples are in the screen frame (x right, y up, z out) once the
+// menu's SETUP has calibrated the sensor; tilting right then reads -x, so
+// the sign is -1. Before calibration the board's own axes are used as they
+// are, and the direction may be wrong: run SETUP.
 #define ACCEL_TILT_AXIS 0
-#define ACCEL_TILT_SIGN 1
+#define ACCEL_TILT_SIGN (-1)
 #define ACCEL_TILT_ENTER_MG 500  // ~30 degrees
 #define ACCEL_TILT_EXIT_MG 250   // ~15 degrees, back to level
 #define ACCEL_TILT_HOLD_MS 300

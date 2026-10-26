@@ -16,6 +16,10 @@ static button_result_t hold(button_t *b, bool pressed, uint32_t ms, uint32_t *no
     button_result_t got = BUTTON_NONE;
     for (uint32_t t = 0; t < ms; t += FRAME) {
         const button_result_t r = button_update(b, pressed, *now += FRAME);
+        if (r == BUTTON_PRESS) {
+            assert(pressed);  // only ever on the way down
+            continue;
+        }
         if (r != BUTTON_NONE) {
             assert(got == BUTTON_NONE);  // at most one result per hold
             got = r;
@@ -29,6 +33,12 @@ static void test_button(void) {
     uint32_t now = 1000;
     button_init(&b);
     assert(!button_busy(&b));
+
+    // PRESS comes once, as soon as the press has settled.
+    int presses = 0;
+    for (int i = 0; i < 10; i++) presses += button_update(&b, true, now += FRAME) == BUTTON_PRESS;
+    assert(presses == 1);
+    assert(hold(&b, false, 100, &now) == BUTTON_SHORT);
 
     // Short press.
     assert(hold(&b, true, 150, &now) == BUTTON_NONE);
@@ -52,7 +62,9 @@ static void test_button(void) {
     int shorts = 0;
     const bool bounce[] = {false, true, false, true, false, false, false, false};
     for (unsigned i = 0; i < sizeof(bounce); i++) {
-        shorts += button_update(&b, bounce[i], now += 5) == BUTTON_SHORT;
+        const button_result_t r = button_update(&b, bounce[i], now += 5);
+        shorts += r == BUTTON_SHORT;
+        assert(r != BUTTON_PRESS);  // bounce is never a second press
     }
     shorts += hold(&b, false, 100, &now) == BUTTON_SHORT;
     assert(shorts == 1);

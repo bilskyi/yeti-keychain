@@ -24,6 +24,10 @@
 #define GLANCE_Y 3
 
 #define YAWN_MS 2600
+#define SNEEZE_MS 1400
+#define SNEEZE_AT_MS 700  // the "choo"
+#define SNEEZE_CHOO_MS 250
+#define HUM_MS 2600
 #define TRANSITION_HOLD_MS 1200  // TAP: surprised for this long, then happy
 #define DIZZY_MS 2500
 #define KO_MS 3000
@@ -37,9 +41,29 @@
 
 #define OPEN_FULL 256  // eye openness is 0..256
 
+// Body sense (face_feel).
+#define GAZE_DEAD_MG 150   // tilt below this: the eyes do their own thing
+#define GAZE_FULL_MG 450   // this much tilt looks all the way over
+#define GAZE_STEP_PX 3     // retarget only on a change this big (sensor noise)
+#define GAZE_HOLD_MS 800
+#define FLIP_ENTER_MG (-650)  // "up" axis reading below this: upside down
+#define FLIP_EXIT_MG 300
+#define FLIP_HOLD_MS 600
+#define SCARED_HOLD_MS 1500
+#define STILL_DELTA_MG 60     // sample-to-sample change below this: at rest
+#define PICKUP_DELTA_MG 250   // ...and above this after a long rest: picked up
+#define PICKUP_REST_MS 90000
+#define FALL_MG 350           // |a| below this: falling (weightless)
+#define WHEE_COOLDOWN_MS 3000
+
+// Thought bubble: shown for BUBBLE_ON_S out of every BUBBLE_EVERY_S seconds
+// while the pet needs something.
+#define BUBBLE_EVERY_S 15
+#define BUBBLE_ON_S 4
+
 static const char *const NAMES[EXPR_COUNT] = {
     "neutral", "happy", "sleepy", "surprised", "angry", "love", "sad",
-    "laugh",   "dizzy", "ko",     "excited",   "wink",  "lowbat",
+    "laugh",   "dizzy", "ko",     "excited",   "wink",  "scared", "lowbat",
 };
 
 const char *face_expression_name(expression_t e) {
@@ -125,6 +149,11 @@ static void react(face_t *f, expression_t e, uint32_t now, uint32_t hold_ms) {
     face_set_expression(f, e, now, hold_ms);
 }
 
+void face_react(face_t *f, expression_t e, uint32_t now, uint32_t hold_ms) {
+    f->last_input = now;
+    react(f, e, now, hold_ms);
+}
+
 static void then(face_t *f, expression_t e) {
     f->after = e;
     f->has_after = true;
@@ -135,6 +164,7 @@ static expression_t showing(const face_t *f) {
 }
 
 void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
+    if (ev >= INPUT_BTN_A_PRESS && ev <= INPUT_BTN_C_PRESS) return;  // SHORT/LONG follow
     f->last_input = now;
     switch (ev) {
         case INPUT_TAP:
@@ -180,14 +210,115 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
             react(f, next, now, 8000);
             break;
         }
-        case INPUT_BTN_B_LONG:
         case INPUT_BTN_C_LONG:
             react(f, EXPR_HAPPY, now, 3000);
             break;
+        case INPUT_BTN_B_LONG:  // opens the menu (main.c)
         case INPUT_BTN_A_LONG:  // the power policy uses this one (night toggle)
+        case INPUT_BTN_A_PRESS:
+        case INPUT_BTN_B_PRESS:
+        case INPUT_BTN_C_PRESS:
         case INPUT_NONE:
         case INPUT_EVENT_COUNT:
             break;
+    }
+}
+
+void face_set_needs(face_t *f, uint8_t needs) {
+    f->needs = needs;
+}
+
+face_cue_t face_take_cue(face_t *f) {
+    const face_cue_t c = f->cue;
+    f->cue = CUE_NONE;
+    return c;
+}
+
+// Upside down, with hysteresis and a hold so a quick flip of the wrist is not
+// a panic. Returns true while upside down.
+static bool feel_flip(face_t *f, int up, uint32_t now) {
+    const bool want = f->upside ? up < FLIP_EXIT_MG : up < FLIP_ENTER_MG;
+    if (want == f->upside) {
+        f->flip_pending = false;
+    } else if (!f->flip_pending) {
+        f->flip_pending = true;
+        f->flip_since = now;
+    } else if (now - f->flip_since >= FLIP_HOLD_MS) {
+        f->flip_pending = false;
+        f->upside = want;
+        f->last_input = now;
+        if (want) {
+            react(f, EXPR_SCARED, now, SCARED_HOLD_MS);
+            f->cue = CUE_SCARED;
+        } else {
+            react(f, EXPR_HAPPY, now, 2500);  // phew
+            f->cue = CUE_RELIEF;
+        }
+    }
+    if (f->upside) {
+        // Keep panicking for as long as it stays that way round, whatever
+        // else happens in between.
+        if (showing(f) == EXPR_SCARED) {
+            f->expr_until = now + SCARED_HOLD_MS;
+        } else if (reached(now, f->expr_until)) {
+            react(f, EXPR_SCARED, now, SCARED_HOLD_MS);
+        }
+    }
+    return f->upside;
+}
+
+void face_feel(face_t *f, const int mg[3], bool oriented, uint32_t now) {
+    if (f->night) {  // asleep: feels nothing
+        f->has_prev = false;
+        f->upside = f->flip_pending = false;
+        return;
+    }
+    int delta = 0;
+    for (int i = 0; i < 3; i++) {
+        if (f->has_prev) delta += abs(mg[i] - f->prev_mg[i]);
+        f->prev_mg[i] = mg[i];
+    }
+    if (!f->has_prev) {
+        f->has_prev = true;
+        f->still_since = now;
+    }
+
+    // Weightless for two samples in a row: falling, or thrown up.
+    const int m2 = mg[0] * mg[0] + mg[1] * mg[1] + mg[2] * mg[2];
+    if (m2 < FALL_MG * FALL_MG) {
+        if (++f->low_g == 2 && reached(now, f->whee_until)) {
+            f->last_input = now;
+            react(f, EXPR_EXCITED, now, 1500);
+            then(f, EXPR_HAPPY);
+            f->cue = CUE_WHEE;
+            f->whee_until = now + WHEE_COOLDOWN_MS;
+        }
+    } else {
+        f->low_g = 0;
+    }
+
+    // Picked up after lying still a long while: hello!
+    if (delta > PICKUP_DELTA_MG && now - f->still_since >= PICKUP_REST_MS && !f->upside) {
+        f->last_input = now;
+        react(f, EXPR_SURPRISED, now, TRANSITION_HOLD_MS);
+        then(f, EXPR_HAPPY);
+        f->cue = CUE_HI;
+    }
+    if (delta > STILL_DELTA_MG) f->still_since = now;
+
+    // Which way is up means nothing until the sensor is calibrated.
+    if (oriented && feel_flip(f, mg[1], now)) return;
+
+    // The eyes roll toward the low side, like marbles.
+    int tilt = ACCEL_TILT_SIGN * mg[ACCEL_TILT_AXIS];
+    if (abs(tilt) < GAZE_DEAD_MG) return;
+    if (tilt > GAZE_FULL_MG) tilt = GAZE_FULL_MG;
+    if (tilt < -GAZE_FULL_MG) tilt = -GAZE_FULL_MG;
+    const int tx = tilt * GLANCE_X / GAZE_FULL_MG;
+    if (abs(tx - f->look_tx) >= GAZE_STEP_PX || !f->look_until) {
+        face_look(f, tx, 0, now, GAZE_HOLD_MS);
+    } else {
+        f->look_until = now + GAZE_HOLD_MS;
     }
 }
 
@@ -200,11 +331,25 @@ static int ease_toward(int cur, int target) {
 }
 
 static void start_idle(face_t *f, uint32_t now) {
-    const bool yawn = f->expr == EXPR_SLEEPY ? rng_chance(&f->rng, 50)
-                                             : rng_chance(&f->rng, 12);
+    const bool yawn = f->expr == EXPR_SLEEPY || (f->needs & PET_NEED_SLEEP)
+                          ? rng_chance(&f->rng, 50)
+                          : rng_chance(&f->rng, 12);
     if (yawn) {
         f->idle = IDLE_YAWN;
         f->idle_start = now;
+        return;
+    }
+    if (rng_chance(&f->rng, 7)) {
+        f->idle = IDLE_SNEEZE;
+        f->idle_start = now;
+        f->cue = CUE_SNEEZE;
+        return;
+    }
+    const bool cheerful = f->expr == EXPR_HAPPY || f->expr == EXPR_NEUTRAL || f->expr == EXPR_LOVE;
+    if (cheerful && !f->needs && rng_chance(&f->rng, 15)) {
+        f->idle = IDLE_HUM;
+        f->idle_start = now;
+        f->cue = CUE_HUM;
         return;
     }
     // Glance: mostly sideways, sometimes a little up or down.
@@ -253,6 +398,7 @@ void face_update(face_t *f, uint32_t now) {
             const mood_ctx_t ctx = {
                 .night = f->night,
                 .ms_since_input = now - f->last_input,
+                .needs = f->needs,
             };
             uint32_t hold;
             const expression_t next = mood_pick(&f->rng, f->expr, &ctx, &hold);
@@ -278,11 +424,15 @@ void face_update(face_t *f, uint32_t now) {
             }
             break;
         case IDLE_YAWN:
-            if (now - f->idle_start >= YAWN_MS) {
+        case IDLE_SNEEZE:
+        case IDLE_HUM: {
+            const uint32_t len = f->idle == IDLE_YAWN ? YAWN_MS : f->idle == IDLE_SNEEZE ? SNEEZE_MS : HUM_MS;
+            if (now - f->idle_start >= len) {
                 f->idle = IDLE_NONE;
                 schedule_idle(f, now);
             }
             break;
+        }
         case IDLE_NONE:
             if (reached(now, f->next_idle)) {
                 if (f->night || f->reacting) {
@@ -307,12 +457,14 @@ static uint32_t anim_ms(expression_t e) {
         case EXPR_SURPRISED: return ANIM_POP_MS;
         case EXPR_DIZZY: return DIZZY_MS;  // spins for as long as it shows
         case EXPR_KO: return KO_MS;
+        case EXPR_SCARED: return UINT32_MAX;  // trembles for as long as it shows
         default: return 0;
     }
 }
 
 bool face_is_animating(const face_t *f) {
-    if (f->blinking || f->has_pending || f->idle == IDLE_YAWN || f->look_x != f->look_tx ||
+    if (f->blinking || f->has_pending || (f->idle != IDLE_NONE && f->idle != IDLE_GLANCE) ||
+        f->look_x != f->look_tx ||
         f->look_y != f->look_ty) {
         return true;
     }
@@ -350,6 +502,11 @@ static int openness(const face_t *f) {
     }
     // A yawn squeezes the eyes most of the way shut.
     open = open * (256 - yawn_amount(f) * 3 / 4) / 256;
+    // So does the "ah... ah..." before a sneeze.
+    if (f->idle == IDLE_SNEEZE) {
+        const int t = (int)(f->now - f->idle_start);
+        if (t < SNEEZE_AT_MS) open = open * (256 - t * 180 / SNEEZE_AT_MS) / 256;
+    }
     return open;
 }
 
@@ -459,6 +616,31 @@ static void draw_zzz(gfx_t *g, uint32_t now) {
     draw_z(g, 106 + p2 / 6, 24 - p2 / 2, 3);
 }
 
+static void draw_note(gfx_t *g, int x, int y) {  // a quaver
+    gfx_fill_ellipse(g, x, y, 2, 2, GFX_WHITE);
+    gfx_fill_rect(g, x + 2, y - 7, 1, 8, GFX_WHITE);
+    gfx_line(g, x + 2, y - 7, x + 5, y - 4, GFX_WHITE);
+}
+
+// Thought bubble in the top right corner with what the pet wants.
+static void draw_bubble(gfx_t *g, uint8_t needs) {
+    gfx_fill_circle(g, 104, 19, 1, GFX_WHITE);
+    gfx_fill_circle(g, 108, 15, 2, GFX_WHITE);
+    gfx_fill_rrect(g, 108, 2, 18, 13, 5, GFX_WHITE);
+    const int cx = 117, cy = 8;
+    if (needs & PET_NEED_FOOD) {  // a fish
+        gfx_fill_ellipse(g, cx - 2, cy, 4, 3, GFX_BLACK);
+        gfx_fill_triangle(g, cx + 1, cy, cx + 5, cy - 3, cx + 5, cy + 3, GFX_BLACK);
+    } else if (needs & PET_NEED_SLEEP) {  // a z
+        gfx_hline(g, cx - 3, cx + 3, cy - 3, GFX_BLACK);
+        gfx_line(g, cx + 3, cy - 3, cx - 3, cy + 3, GFX_BLACK);
+        gfx_hline(g, cx - 3, cx + 3, cy + 3, GFX_BLACK);
+    } else {  // a ball: wants to play
+        gfx_fill_circle(g, cx, cy, 4, GFX_BLACK);
+        gfx_hline(g, cx - 4, cx + 4, cy, GFX_WHITE);
+    }
+}
+
 void face_render(const face_t *f, gfx_t *g) {
     if (f->night) {
         // Asleep: two flat lines and drifting z's. Far fewer lit pixels than
@@ -481,6 +663,18 @@ void face_render(const face_t *f, gfx_t *g) {
     const int mx = MOUTH_CX + dx / 2, my = MOUTH_CY + dy / 2;
     const int open = openness(f);
     const int yawn = yawn_amount(f);
+
+    // The "choo!" of a sneeze: eyes squeezed shut > <, a jolt down.
+    if (f->idle == IDLE_SNEEZE) {
+        const uint32_t st = f->now - f->idle_start;
+        if (st >= SNEEZE_AT_MS && st < SNEEZE_AT_MS + SNEEZE_CHOO_MS) {
+            draw_chevron(g, lx, ey + 3, true);
+            draw_chevron(g, rx, ey + 3, false);
+            draw_open_mouth(g, mx, my + 3, 5, 4);
+            for (int k = 0; k < 3; k++) gfx_pixel(g, mx - 4 + k * 4, my + 12 + k % 2, GFX_WHITE);
+            return;
+        }
+    }
 
     switch (f->expr) {
         case EXPR_NEUTRAL:
@@ -561,6 +755,20 @@ void face_render(const face_t *f, gfx_t *g) {
             draw_caret(g, rx, ey);
             draw_arc(g, mx, my, 15, 6);
             break;
+        case EXPR_SCARED: {
+            // Wide eyes with tiny pupils, trembling; a wobbly mouth; sweat.
+            const int j = (t / 50) % 2 ? 1 : -1;
+            for (int s = 0; s < 2; s++) {
+                const int cx = (s ? rx : lx) + j;
+                draw_dot(g, cx, ey - 1, EYE_R + 1, open);
+                if (open > OPEN_FULL / 2) gfx_fill_circle(g, cx, ey - 1, 3, GFX_BLACK);
+            }
+            for (int x = -9; x <= 9; x++) {
+                gfx_fill_rect(g, mx + x + j, my + 5 + ((x + 9) / 3 % 2 ? 1 : -1), 1, 2, GFX_WHITE);
+            }
+            draw_tear(g, rx + 15, ey - 10 + (int)(t / 120 % 6));
+            break;
+        }
         case EXPR_LOWBAT:
             draw_dot(g, lx, ey + 3, EYE_R, open / 4);
             draw_dot(g, rx, ey + 3, EYE_R, open / 4);
@@ -578,5 +786,20 @@ void face_render(const face_t *f, gfx_t *g) {
     if (yawn) {
         gfx_fill_rect(g, mx - 13, my - 1, 27, 9, GFX_BLACK);
         draw_yawn(g, mx, my + 3, yawn);
+    }
+
+    // Humming: two notes drifting up between the eyes.
+    if (f->idle == IDLE_HUM) {
+        const int p = (int)((f->now - f->idle_start) / 50);
+        for (int k = 0; k < 2; k++) {
+            const int q = (p + k * 10) % 20;
+            draw_note(g, 58 + q / 3 + k * 6, 30 - q);
+        }
+    }
+
+    // What it needs, now and then, while it is not busy reacting.
+    if (f->needs && !f->reacting && f->expr != EXPR_SLEEPY && f->idle == IDLE_NONE &&
+        (f->now / 1000) % BUBBLE_EVERY_S < BUBBLE_ON_S) {
+        draw_bubble(g, f->needs);
     }
 }

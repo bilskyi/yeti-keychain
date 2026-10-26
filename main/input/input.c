@@ -103,7 +103,7 @@ void input_poll(uint32_t now_ms) {
 }
 
 static bool is_button(input_event_t ev) {
-    return ev >= INPUT_BTN_A_SHORT && ev <= INPUT_BTN_C_LONG;
+    return ev >= INPUT_BTN_A_SHORT && ev <= INPUT_BTN_C_PRESS;
 }
 
 // A tap that is really the jolt of a button press: a button is held now, or
@@ -130,7 +130,8 @@ void input_dispatch(uint32_t now_ms) {
             ESP_LOGI(TAG, "event %s ignored (button press)", input_event_name(ev));
             continue;
         }
-        ESP_LOGI(TAG, "event %s", input_event_name(ev));
+        // PRESS precedes every SHORT/LONG: logging it too would double the noise.
+        if (ev < INPUT_BTN_A_PRESS) ESP_LOGI(TAG, "event %s", input_event_name(ev));
         for (int i = 0; i < s_nsubs; i++) s_subs[i].fn(ev, now_ms, s_subs[i].ctx);
     }
 }

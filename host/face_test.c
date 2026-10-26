@@ -115,13 +115,16 @@ static void test_mood_machine_visits_every_mood(void) {
     static face_t f;
     face_init(&f, 7, 0);
     int seen[EXPR_COUNT] = {0};
-    int yawns = 0, glances = 0;
+    int yawns = 0, glances = 0, sneezes = 0, hums = 0, cues = 0;
     idle_kind_t prev_idle = IDLE_NONE;
     for (uint32_t now = 0; now < 2u * 3600u * 1000u; now += FRAME) {
         face_update(&f, now);
         seen[f.expr]++;
         if (f.idle != prev_idle && f.idle == IDLE_YAWN) yawns++;
         if (f.idle != prev_idle && f.idle == IDLE_GLANCE) glances++;
+        if (f.idle != prev_idle && f.idle == IDLE_SNEEZE) sneezes++;
+        if (f.idle != prev_idle && f.idle == IDLE_HUM) hums++;
+        cues += face_take_cue(&f) != CUE_NONE;
         prev_idle = f.idle;
     }
     for (int e = 0; e < EXPR_MOOD_COUNT; e++) {
@@ -129,9 +132,10 @@ static void test_mood_machine_visits_every_mood(void) {
                100.0 * seen[e] / (2.0 * 3600 * 1000 / FRAME));
         assert(seen[e] > 0);
     }
-    printf("  yawns %d, glances %d in 2 h\n", yawns, glances);
-    assert(seen[EXPR_LOWBAT] == 0);
-    assert(yawns > 0 && glances > 0);
+    printf("  yawns %d, glances %d, sneezes %d, hums %d in 2 h\n", yawns, glances, sneezes, hums);
+    assert(seen[EXPR_LOWBAT] == 0 && seen[EXPR_SCARED] == 0);
+    assert(yawns > 0 && glances > 0 && sneezes > 0 && hums > 0);
+    assert(cues == sneezes + hums);  // each one asks for its sound, once
 }
 
 static void test_reactions(void) {
@@ -201,6 +205,116 @@ static void test_reactions(void) {
     f.blinking = false;
     f.next_blink = now + 100000;
     assert(!face_is_animating(&f));
+}
+
+// Feeds the face the same sample for `ms`, a frame at a time.
+static void feel(face_t *f, int x, int y, int z, uint32_t ms, uint32_t *now) {
+    const int mg[3] = {x, y, z};
+    for (uint32_t t = 0; t < ms; t += FRAME) {
+        face_feel(f, mg, true, *now);
+        face_update(f, *now += FRAME);
+    }
+}
+
+static void test_body_sense(void) {
+    static face_t f;
+    static gfx_t g;
+    uint32_t now = 5000;
+    face_init(&f, 21, now);
+    show(&f, EXPR_NEUTRAL, &now);
+
+    // Upright and still: nothing happens.
+    feel(&f, 0, 1000, 0, 2000, &now);
+    assert(f.look_tx == 0 && !f.upside && face_take_cue(&f) == CUE_NONE);
+
+    // Tilted right (screen frame reads -x): the eyes roll right; level: back.
+    feel(&f, -400, 900, 0, 600, &now);
+    assert(f.look_x > 6);
+    feel(&f, 0, 1000, 0, 1500, &now);
+    assert(f.look_x == 0);
+
+    // A quick flip is not a panic; held upside down it is, for as long as
+    // it stays that way; righted, relief.
+    feel(&f, 0, -1000, 0, 300, &now);
+    feel(&f, 0, 1000, 0, 300, &now);
+    assert(!f.upside && face_take_cue(&f) == CUE_NONE);
+    feel(&f, 0, -1000, 0, 800, &now);
+    assert(f.upside && face_take_cue(&f) == CUE_SCARED);
+    feel(&f, 0, -1000, 0, 10000, &now);
+    assert(f.expr == EXPR_SCARED && face_is_animating(&f));
+    gfx_clear(&g);
+    face_render(&f, &g);
+    assert(lit(&g) > 60 && lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);
+    feel(&f, 0, 1000, 0, 800, &now);
+    assert(!f.upside && face_take_cue(&f) == CUE_RELIEF);
+    feel(&f, 0, 1000, 0, 400, &now);
+    assert(f.expr == EXPR_HAPPY);
+    // Uncalibrated, "up" is unknown: no panic.
+    for (int i = 0; i < 60; i++) {
+        const int mg[3] = {0, -1000, 0};
+        face_feel(&f, mg, false, now);
+        face_update(&f, now += FRAME);
+    }
+    assert(!f.upside);
+
+    // Dropped: weightless for two samples, WHEE; not again straight away.
+    feel(&f, 0, 1000, 0, 4000, &now);
+    feel(&f, 20, 50, 30, 100, &now);
+    assert(face_take_cue(&f) == CUE_WHEE);
+    feel(&f, 0, 1000, 0, 200, &now);
+    feel(&f, 20, 50, 30, 100, &now);
+    assert(face_take_cue(&f) == CUE_NONE);
+
+    // Lying still for minutes, then picked up: hello.
+    feel(&f, 0, 0, 1000, 100000, &now);
+    (void)face_take_cue(&f);
+    feel(&f, 300, 200, 900, 70, &now);
+    assert(face_take_cue(&f) == CUE_HI);
+    // Moved again soon after: no second hello.
+    feel(&f, 0, 0, 1000, 2000, &now);
+    feel(&f, 300, 200, 900, 70, &now);
+    assert(face_take_cue(&f) == CUE_NONE);
+
+    // Asleep it feels nothing.
+    face_set_night(&f, true, now);
+    feel(&f, 0, -1000, 0, 3000, &now);
+    assert(!f.upside && face_take_cue(&f) == CUE_NONE);
+}
+
+static void test_needs(void) {
+    static face_t f;
+    static gfx_t g;
+    uint32_t now = 0;
+    face_init(&f, 23, now);
+    // Hungry: much sadder over an hour than a cared-for pet.
+    int sad_ok = 0, sad_hungry = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        face_init(&f, 23, 0);
+        face_set_needs(&f, pass ? PET_NEED_FOOD : 0);
+        for (now = 0; now < 3600u * 1000u; now += FRAME) {
+            face_update(&f, now);
+            *(pass ? &sad_hungry : &sad_ok) += f.expr == EXPR_SAD;
+        }
+    }
+    printf("  sad frames: cared for %d, hungry %d\n", sad_ok, sad_hungry);
+    assert(sad_hungry > 3 * sad_ok);
+
+    // The thought bubble shows now and then, inside the burn-in margin, with
+    // the eyes glanced fully right.
+    face_set_needs(&f, PET_NEED_FOOD | PET_NEED_FUN);
+    show(&f, EXPR_NEUTRAL, &now);
+    f.reacting = false;
+    int shown = 0;
+    for (int s = 0; s < 30; s++) {
+        now += 1000;
+        f.now = now;
+        f.look_x = f.look_tx = 12;
+        gfx_clear(&g);
+        face_render(&f, &g);
+        assert(lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);
+        shown += gfx_get_pixel(&g, 117, 3);  // the bubble's top edge
+    }
+    assert(shown >= 6 && shown <= 10);  // 4 s of every 15
 }
 
 static void test_night(void) {
@@ -313,6 +427,8 @@ int main(void) {
     RUN(test_blinks_at_random_intervals);
     RUN(test_mood_machine_visits_every_mood);
     RUN(test_reactions);
+    RUN(test_body_sense);
+    RUN(test_needs);
     RUN(test_night);
     RUN(test_time_wrap);
     RUN(test_policy);

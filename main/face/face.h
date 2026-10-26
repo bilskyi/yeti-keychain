@@ -6,6 +6,7 @@
 //
 //   face_init()      once
 //   face_on_event()  for each input event
+//   face_feel()      each accelerometer sample (gaze, upside down, falls)
 //   face_update()    once per frame, before rendering
 //   face_render()    draws into a gfx_t
 //
@@ -20,6 +21,7 @@
 #include "display/gfx.h"
 #include "face/rng.h"
 #include "input/input_event.h"
+#include "pet/pet.h"
 
 typedef enum {
     // Moods: the mood machine drifts between these on its own.
@@ -36,6 +38,7 @@ typedef enum {
     EXPR_KO,       // X X, a star circling
     EXPR_EXCITED,  // star eyes
     EXPR_WINK,
+    EXPR_SCARED,   // upside down: wide trembling eyes, a sweat drop
     EXPR_LOWBAT,  // never picked by the mood machine; battery code sets it
     EXPR_COUNT
 } expression_t;
@@ -47,7 +50,20 @@ typedef enum {
     IDLE_NONE = 0,
     IDLE_GLANCE,  // look somewhere, hold, come back
     IDLE_YAWN,
+    IDLE_SNEEZE,  // eyes squeeze, a jolt, "achoo"
+    IDLE_HUM,     // music notes drifting up
 } idle_kind_t;
+
+// Something happened that wants a sound; main.c plays it (face_take_cue).
+typedef enum {
+    CUE_NONE = 0,
+    CUE_HI,      // picked up after a long rest
+    CUE_SCARED,  // turned upside down
+    CUE_RELIEF,  // the right way up again
+    CUE_WHEE,    // falling, or thrown
+    CUE_SNEEZE,
+    CUE_HUM,
+} face_cue_t;
 
 typedef struct {
     rng_t rng;
@@ -87,6 +103,19 @@ typedef struct {
 
     bool night;
     uint32_t now;  // last face_update() time, for rendering
+
+    uint8_t needs;  // PET_NEED_* bits: drives the mood and the thought bubble
+    face_cue_t cue;
+
+    // Body sense (face_feel).
+    bool upside;           // currently upside down
+    uint32_t flip_since;   // when the orientation started to change
+    bool flip_pending;
+    int prev_mg[3];
+    bool has_prev;
+    uint32_t still_since;  // last time it moved
+    int low_g;             // consecutive near-weightless samples
+    uint32_t whee_until;   // no second WHEE before this
 } face_t;
 
 void face_init(face_t *f, uint32_t seed, uint32_t now);
@@ -100,7 +129,19 @@ void face_set_night(face_t *f, bool night, uint32_t now);
 
 void face_look(face_t *f, int dx, int dy, uint32_t now, uint32_t hold_ms);
 
+// Show e as a reaction (the mood machine stays out of it for hold_ms).
+void face_react(face_t *f, expression_t e, uint32_t now, uint32_t hold_ms);
+
 void face_on_event(face_t *f, input_event_t ev, uint32_t now);
+
+// One accelerometer sample in the screen frame (input/orient.h: x right,
+// y up, z out). The eyes follow the tilt; upside down it panics; picked up
+// after a long rest it says hi; a fall or a throw is a WHEE.
+// `oriented`: the sensor is calibrated, so "upside down" can be trusted.
+void face_feel(face_t *f, const int mg[3], bool oriented, uint32_t now);
+
+void face_set_needs(face_t *f, uint8_t needs);  // PET_NEED_* bits
+face_cue_t face_take_cue(face_t *f);
 
 void face_update(face_t *f, uint32_t now);
 
@@ -117,6 +158,7 @@ const char *face_expression_name(expression_t e);
 typedef struct {
     bool night;
     uint32_t ms_since_input;  // UINT32_MAX when there has never been any
+    uint8_t needs;            // PET_NEED_* bits
 } mood_ctx_t;
 
 // Next spontaneous expression and how long it holds.

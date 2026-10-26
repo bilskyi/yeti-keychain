@@ -43,10 +43,47 @@ static const note_t CLICK_A[] = {{3520, 25}, {0, 0}};
 static const note_t CLICK_BC[] = {{2794, 20}, {0, 0}};
 static const note_t HAPPY[] = {{2637, 50}, {3136, 50}, {4186, 80}, {0, 0}};
 static const note_t GOODNIGHT[] = {{3136, 90}, {2349, 90}, {1568, 180}, {0, 0}};
-static const note_t UNMUTED[] = {{2093, 50}, {3136, 80}, {0, 0}};
-static const note_t MUTED[] = {{1568, 60}, {1047, 80}, {0, 0}};
+// Menu and game effects, indexed by app_sound_t.
+static const note_t FX_MOVE[] = {{2794, 15}, {0, 0}};
+static const note_t FX_SELECT[] = {{2349, 40}, {3136, 60}, {0, 0}};
+static const note_t FX_BACK[] = {{3136, 40}, {2349, 60}, {0, 0}};
+static const note_t FX_ROLL[] = {{1800, 20}, {0, 25}, {2300, 20}, {0, 25}, {1600, 20}, {0, 25},
+                                 {2500, 20}, {0, 25}, {2000, 20}, {0, 0}};
+static const note_t FX_DING[] = {{3520, 40}, {4186, 120}, {0, 0}};
+static const note_t FX_COIN[] = {{3520, 30}, {0, 30}, {3520, 60}, {0, 0}};
+static const note_t FX_GO[] = {{3136, 160}, {0, 0}};
+static const note_t FX_FAIL[] = {{1047, 110}, {784, 170}, {0, 0}};
+static const note_t FX_POINT[] = {{3136, 30}, {4186, 40}, {0, 0}};
+static const note_t FX_FLAP[] = {{2093, 15}, {0, 0}};
+static const note_t FX_OVER[] = {{2349, 100}, {1760, 100}, {1319, 200}, {0, 0}};
+static const note_t FX_RECORD[] = {{2093, 60}, {2637, 60}, {3136, 60}, {4186, 180}, {0, 0}};
+static const note_t FX_EAT[] = {{1760, 25}, {0, 20}, {1568, 35}, {0, 0}};
+static const note_t FX_LEVELUP[] = {{2093, 70}, {2637, 70}, {3136, 70}, {0, 30}, {2637, 60},
+                                    {3136, 60}, {4186, 220}, {0, 0}};
+static const note_t FX_TONE_L[] = {{2093, 180}, {0, 0}};
+static const note_t FX_TONE_R[] = {{3136, 180}, {0, 0}};
+static const note_t FX_HI[] = {{2637, 50}, {0, 30}, {3520, 90}, {0, 0}};
+static const note_t FX_SCARED[] = {{3520, 40}, {3136, 40}, {3520, 40}, {3136, 40}, {3520, 40},
+                                   {3136, 40}, {0, 0}};
+static const note_t FX_WHEE[] = {{1568, 40}, {1976, 40}, {2349, 40}, {2794, 40}, {3322, 40},
+                                 {3951, 120}, {0, 0}};
+// "ah... ah... CHOO": two rising breaths, then a burst at the "choo" frame.
+static const note_t FX_SNEEZE[] = {{1760, 120}, {0, 160}, {2093, 140}, {0, 280}, {3951, 30},
+                                   {2349, 30}, {1568, 60}, {0, 0}};
+static const note_t FX_HUM[] = {{2349, 140}, {2637, 140}, {3136, 200}, {2637, 140}, {2349, 280},
+                                {0, 0}};
 
-static RTC_DATA_ATTR bool s_muted;  // kept through deep sleep
+static const note_t *const FX[SND_COUNT] = {
+    [SND_MOVE] = FX_MOVE,     [SND_SELECT] = FX_SELECT, [SND_BACK] = FX_BACK,
+    [SND_ROLL] = FX_ROLL,     [SND_DING] = FX_DING,     [SND_COIN] = FX_COIN,
+    [SND_GO] = FX_GO,         [SND_FAIL] = FX_FAIL,     [SND_POINT] = FX_POINT,
+    [SND_FLAP] = FX_FLAP,     [SND_OVER] = FX_OVER,     [SND_RECORD] = FX_RECORD,
+    [SND_EAT] = FX_EAT,       [SND_LEVELUP] = FX_LEVELUP, [SND_TONE_L] = FX_TONE_L,
+    [SND_TONE_R] = FX_TONE_R, [SND_HI] = FX_HI,         [SND_SCARED] = FX_SCARED,
+    [SND_WHEE] = FX_WHEE,     [SND_SNEEZE] = FX_SNEEZE, [SND_HUM] = FX_HUM,
+};
+
+static bool s_muted;
 static bool s_ready;
 static esp_timer_handle_t s_timer;
 static esp_pm_lock_handle_t s_awake;
@@ -97,8 +134,8 @@ static void next_note(void *arg) {
     xSemaphoreGive(s_mutex);
 }
 
-static void play(const note_t *tune, bool even_if_muted) {
-    if (!s_ready || (s_muted && !even_if_muted)) return;
+static void play(const note_t *tune) {
+    if (!s_ready || s_muted || !tune) return;
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     esp_timer_stop(s_timer);  // a new sound cuts the old one off
     if (!s_locked && esp_pm_lock_acquire(s_awake) == ESP_OK) s_locked = true;
@@ -155,7 +192,7 @@ void sound_init(void) {
 }
 
 void sound_hello(void) {
-    play(HELLO, false);
+    play(HELLO);
 }
 
 void sound_on_event(input_event_t ev) {
@@ -171,15 +208,28 @@ void sound_on_event(input_event_t ev) {
         case INPUT_BTN_C_SHORT: tune = CLICK_BC; break;
         case INPUT_BTN_C_LONG: tune = HAPPY; break;
         case INPUT_BTN_A_LONG: tune = GOODNIGHT; break;
-        case INPUT_BTN_B_LONG:
-            s_muted = !s_muted;
-            ESP_LOGI(TAG, "%s", s_muted ? "muted" : "unmuted");
-            play(s_muted ? MUTED : UNMUTED, true);  // say so either way
-            return;
+        case INPUT_BTN_B_LONG:  // opens the menu, which makes its own sound
+        case INPUT_BTN_A_PRESS:
+        case INPUT_BTN_B_PRESS:
+        case INPUT_BTN_C_PRESS:
         case INPUT_NONE:
         case INPUT_EVENT_COUNT: break;
     }
-    if (tune) play(tune, false);
+    play(tune);
+}
+
+void sound_fx(app_sound_t fx) {
+    if ((unsigned)fx < SND_COUNT) play(FX[fx]);
+}
+
+void sound_set_muted(bool muted) {
+    s_muted = muted;
+    if (muted && s_ready) {
+        xSemaphoreTake(s_mutex, portMAX_DELAY);
+        esp_timer_stop(s_timer);
+        finish();
+        xSemaphoreGive(s_mutex);
+    }
 }
 
 #endif

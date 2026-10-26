@@ -16,7 +16,9 @@ button_result_t button_update(button_t *b, bool pressed, uint32_t now) {
         if (b->stable) {
             b->pressed_at = b->raw_since;
             b->long_sent = false;
-        } else if (!b->long_sent) {
+            return BUTTON_PRESS;
+        }
+        if (!b->long_sent) {
             return BUTTON_SHORT;
         }
     }

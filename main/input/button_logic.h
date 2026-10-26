@@ -8,6 +8,7 @@
 
 typedef enum {
     BUTTON_NONE = 0,
+    BUTTON_PRESS,  // went down (debounced); SHORT or LONG follows
     BUTTON_SHORT,  // released before BTN_LONG_MS
     BUTTON_LONG,   // held for BTN_LONG_MS; fires once, while still held
 } button_result_t;

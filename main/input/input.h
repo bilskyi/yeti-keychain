@@ -56,6 +56,15 @@ esp_err_t input_gpio_isr_init(void);
 int input_source_count(void);
 void input_arm_wakeup(void);
 
+// Latest LIS3DH reading in mg, sampled every frame, in the screen frame
+// (input/orient.h: x right, y up, z out). False when there is no
+// accelerometer or no sample yet. Games read tilt from it.
+bool input_accel_mg(int mg[3]);
+// The same sample in the board's own axes, for calibrating.
+bool input_accel_raw_mg(int mg[3]);
+// Board -> screen axes (input/orient.h); applied from the next sample.
+void input_accel_set_orient(const int8_t map[3]);
+
 // The sources (defined in their own files, only under their flags).
 extern const input_source_t input_source_buttons;
 extern const input_source_t input_source_accel;
