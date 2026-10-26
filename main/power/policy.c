@@ -28,11 +28,7 @@ void policy_note_activity(policy_t *p, uint64_t now_ms) {
 }
 
 void policy_on_event(policy_t *p, input_event_t ev, uint64_t now_ms) {
-    if (ev == INPUT_BTN_A_LONG && !p->night) {
-        p->forced = true;
-        return;
-    }
-    // Anything else (or BTN_A_LONG while asleep) wakes up.
+    (void)ev;  // any input wakes it; going to sleep is the menu's SLEEP
     policy_note_activity(p, now_ms);
 }
 

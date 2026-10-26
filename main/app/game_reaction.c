@@ -80,8 +80,8 @@ void reaction_render(const app_t *a, gfx_t *g) {
         case RX_READY:
             font_draw_centered(g, 64, 8, "WAIT FOR", 1, GFX_WHITE);
             font_draw_centered(g, 64, 20, "NOW!", 2, GFX_WHITE);
-            font_draw_centered(g, 64, 40, "PRESS A", 1, GFX_WHITE);
-            best_line(a, g, 54);
+            app_hint(g, "A:START", "B:BACK");
+            best_line(a, g, 42);
             break;
         case RX_WAIT: {
             // A sleepy dot face, breathing: nothing to see yet.
@@ -107,7 +107,7 @@ void reaction_render(const app_t *a, gfx_t *g) {
             } else {
                 best_line(a, g, 42);
             }
-            font_draw_centered(g, 64, 54, "A: AGAIN", 1, GFX_WHITE);
+            app_hint(g, "A:AGAIN", "B:BACK");
             break;
         }
         case RX_EARLY:
@@ -119,11 +119,11 @@ void reaction_render(const app_t *a, gfx_t *g) {
                 gfx_line(g, 104, 10 + k, 88, 15 + k, GFX_WHITE);
             }
             font_draw_centered(g, 64, 38, "TOO SOON!", 2, GFX_WHITE);
-            font_draw_centered(g, 64, 56, "A: AGAIN", 1, GFX_WHITE);
+            app_hint(g, "A:AGAIN", "B:BACK");
             break;
         case RX_SLOW:
             font_draw_centered(g, 64, 16, "TOO SLOW", 2, GFX_WHITE);
-            font_draw_centered(g, 64, 44, "A: AGAIN", 1, GFX_WHITE);
+            app_hint(g, "A:AGAIN", "B:BACK");
             break;
     }
 }

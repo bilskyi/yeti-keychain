@@ -26,6 +26,8 @@ GAME_FNS(memory);
 GAME_FNS(feed);
 GAME_FNS(stats);
 GAME_FNS(setup);
+GAME_FNS(music);
+void music_leave(app_t *a);  // stops the song
 
 // Helpers for the games.
 void app_play(const app_t *a, app_sound_t s);
@@ -37,13 +39,15 @@ bool app_record(app_t *a, uint16_t *best, uint16_t value, bool lower_is_better);
 void app_reward(app_t *a, int fun, int energy, int xp);
 // Shared end-of-game screen: GAME OVER, the score, NEW BEST or the best.
 void app_game_over(gfx_t *g, int score, bool best, int saved_best);
+// The bottom line: what A does on the left, what B does on the right.
+void app_hint(gfx_t *g, const char *a_does, const char *b_does);
 // A bar 0..PET_MAX at (x, y), w x h, outlined.
 void app_bar(gfx_t *g, int x, int y, int w, int h, int value, int max);
 // Sine of a 0..63 angle (one turn), x256.
 int app_sin64(int a);
 // Number to text, no libc printf needed.
 void app_itoa(int v, char *out);
-// The Mochi dots face, small, for icons and game sprites.
+// The EMO face, small, for icons and game sprites.
 void app_mini_face(gfx_t *g, int cx, int cy, int spread, int r, gfx_color_t c);
 void app_heart(gfx_t *g, int cx, int cy, int s);
 

@@ -154,7 +154,8 @@ void flappy_render(const app_t *a, gfx_t *g) {
     const int bob = f->phase == FLAPPY_START ? app_sin64((int)(a->now / 30)) * 3 / 256 : 0;
     bird(g, f->y / 16 + bob, f->vy, a->now);
     if (f->phase == FLAPPY_START) {
-        font_draw_centered(g, 80, 26, "A: FLAP", 1, GFX_WHITE);
+        font_draw_centered(g, 82, 22, "A:FLAP", 1, GFX_WHITE);
+        font_draw_centered(g, 82, 34, "B:BACK", 1, GFX_WHITE);
     } else {
         char n[8];
         app_itoa(f->score, n);

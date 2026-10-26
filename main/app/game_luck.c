@@ -73,7 +73,7 @@ void dice_render(const app_t *a, gfx_t *g) {
         cy += (int)((k * 5) % 5) - 2;
     }
     die_face(g, cx, cy, d->shown);
-    if (d->phase == DICE_IDLE) font_draw_centered(g, 64, 54, "SHAKE ME", 1, GFX_WHITE);
+    if (d->phase == DICE_IDLE) app_hint(g, "A/SHAKE", "B:BACK");
     if (d->phase == DICE_SHOWN) {
         char n[4];
         app_itoa(d->value, n);
@@ -161,7 +161,7 @@ void coin_render(const app_t *a, gfx_t *g) {
     }
     coin_draw(g, 64, 24, 256, c->heads);
     if (c->phase == COIN_IDLE) {
-        font_draw_centered(g, 64, 54, "TAP OR A", 1, GFX_WHITE);
+        app_hint(g, "A/TAP", "B:BACK");
     } else {
         font_draw_centered(g, 64, 47, c->heads ? "HEADS" : "TAILS", 2, GFX_WHITE);
     }

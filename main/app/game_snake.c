@@ -138,7 +138,7 @@ void snake_render(const app_t *a, gfx_t *g) {
         font_draw_centered(g, 64, 24, "A: LEFT  B: RIGHT", 1, GFX_WHITE);
         for (int i = 0; i < 6; i++) gfx_fill_rect(g, 40 + i * 6, 38, 5, 5, GFX_WHITE);
         gfx_fill_circle(g, 88, 40, 2, GFX_WHITE);
-        font_draw_centered(g, 64, 52, "A: START", 1, GFX_WHITE);
+        app_hint(g, "A:START", "B:BACK");
         return;
     }
     if (s->phase == SNAKE_OVER) {

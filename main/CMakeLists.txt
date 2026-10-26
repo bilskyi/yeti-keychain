@@ -31,6 +31,10 @@ set(KC_SRCS
     app/game_snake.c
     app/game_memory.c
     app/care.c
+    app/game_music.c
+    pet/story.c
+    sound/rtttl.c
+    led/led.c
     pet/pet.c
     input/orient.c
     net/net.c)

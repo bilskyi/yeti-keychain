@@ -5,9 +5,11 @@
 // in as a millisecond counter; randomness from a seeded generator.
 //
 // Controls, the same on every screen:
-//   face:  B long opens the menu (main.c)
-//   menu:  B next item, A choose, B long back to the face
-//   game:  A plays (each game says how), B back to the menu, B long to the face
+//   face:  A pets it, B opens the menu (main.c)
+//   menu:  A chooses, B goes to the next item; every list ends in a way back
+//   game:  A plays (each game says how), B back to the menu
+// No long presses are needed anywhere; B long is a shortcut back to the face.
+// A hint line at the bottom of each screen says what A and B do there.
 //
 // The menu has two lists: the top one (feed, games, stats, sleep, sound,
 // setup, back) and the games list it opens.
@@ -49,6 +51,9 @@ typedef enum {
     SND_WHEE,    // falling / thrown
     SND_SNEEZE,
     SND_HUM,
+    SND_ALARM,   // siren: it needs something
+    SND_GLITCH,  // garbled chirps
+    SND_HMPH,    // offended (shaken quiet mid-song)
     SND_COUNT
 } app_sound_t;
 
@@ -71,6 +76,9 @@ typedef struct {
     bool (*tilt)(int *mg);  // left-right tilt in mg, + = right; false = no sensor
     bool (*accel)(int mg[3]);              // raw board-axis sample, for calibration
     void (*orient)(const int8_t map[3]);  // apply a new calibration
+    bool (*song)(int i);                  // play song i (sound/rtttl.h); false = muted
+    void (*song_stop)(void);
+    bool (*song_playing)(void);
 } app_env_t;
 
 typedef enum {
@@ -90,6 +98,7 @@ typedef enum {
     ITEM_FLAPPY,
     ITEM_SNAKE,
     ITEM_MEMORY,
+    ITEM_MUSIC,
     ITEM_UP,  // back to the top list
     ITEM_COUNT
 } app_item_t;
@@ -199,6 +208,12 @@ typedef struct {
 } setup_t;
 
 typedef struct {
+    int song;  // songs_count() = BACK
+    bool playing;
+    uint32_t t0;
+} music_t;
+
+typedef struct {
     app_mode_t mode;
     app_item_t item;  // selected in the menu / running
     int list;         // menu list showing: 0 top, 1 games
@@ -232,6 +247,7 @@ typedef struct {
         memory_t mem;
         feed_t feed;
         setup_t setup;
+        music_t music;
     } g;
 } app_t;
 

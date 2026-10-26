@@ -1,4 +1,4 @@
-// OLED keychain companion, v0.4.
+// OLED keychain companion, v0.5.
 //
 // Boot, then one loop: input -> policy -> pet -> face -> render -> flush -> sleep.
 // The loop blocks in input_wait() between frames, which is when the C3 drops
@@ -24,6 +24,8 @@
 #include "power/power.h"
 #include "sound/sound.h"
 #include "app/app.h"
+#include "led/led.h"
+#include "pet/story.h"
 #include "storage/storage.h"
 
 static const char *TAG = "main";
@@ -34,6 +36,8 @@ static policy_t s_policy;
 static battery_status_t s_battery;
 static app_t s_app;
 static app_save_t s_save;
+static story_t s_story;
+static bool s_singing;  // a story song is playing; shake (or any input) stops it
 
 void app_main(void);
 
@@ -91,7 +95,36 @@ static const app_env_t ENV = {
     .tilt = env_tilt,
     .accel = input_accel_raw_mg,
     .orient = input_accel_set_orient,
+    .song = sound_song,
+    .song_stop = sound_stop,
+    .song_playing = sound_song_playing,
 };
+
+// Each note of a song flashes the LED for half its length.
+static void note_flash(uint16_t hz, uint16_t ms) {
+    if (hz) led_flash(ms / 2);
+}
+
+// Input during a story song: it stops. A shake is the proper way (it gets
+// dizzy and offended); anything else gets a disappointed look. True when the
+// event was used up stopping it.
+static bool stop_song(input_event_t ev, uint32_t now) {
+    if (!s_singing || ev == INPUT_BTN_A_PRESS || ev == INPUT_BTN_B_PRESS ||
+        ev == INPUT_BTN_C_PRESS || ev == INPUT_TILT_LEFT || ev == INPUT_TILT_RIGHT) {
+        return false;
+    }
+    s_singing = false;
+    sound_stop();
+    led_pattern(LED_OFF);
+    face_fx_stop(&s_face);
+    if (ev == INPUT_SHAKE) {
+        face_on_event(&s_face, ev, now);  // dizzy, then angry
+        sound_fx(SND_HMPH);
+    } else {
+        face_react(&s_face, EXPR_SAD, now, 2500);
+    }
+    return true;
+}
 
 static bool oriented(void) {
     return s_app.save.orient[0] || s_app.save.orient[1] || s_app.save.orient[2];
@@ -109,16 +142,58 @@ static void play_cue(face_cue_t cue) {
 static void on_input(input_event_t ev, uint32_t now, void *ctx) {
     (void)ctx;
     if (app_active(&s_app)) {
-        // The menu and games own the buttons; A long must not mean "sleep".
         policy_note_activity(&s_policy, now_ms64());
         app_on_event(&s_app, ev, now);
         return;
     }
     policy_on_event(&s_policy, ev, now_ms64());
+    if (stop_song(ev, now)) return;
+    if (s_face.fx == FX_ALARM) {  // seen it: hush the siren
+        led_pattern(LED_OFF);
+        face_fx_stop(&s_face);
+    }
+    if (ev == INPUT_BTN_B_SHORT) {  // B: the menu
+        app_open(&s_app, now);
+        return;
+    }
     face_on_event(&s_face, ev, now);
     app_face_event(&s_app, ev);
     sound_on_event(ev);
-    if (ev == INPUT_BTN_B_LONG) app_open(&s_app, now);
+}
+
+// The pet's own events (pet/story.h), when nothing else is going on.
+static void run_story(uint32_t now) {
+    if (s_singing && !sound_song_playing()) {  // sang it to the end: proud
+        s_singing = false;
+        face_fx_stop(&s_face);
+        face_react(&s_face, EXPR_EXCITED, now, 3000);
+        led_pattern(LED_BLINK);
+    }
+    const bool idle = !app_active(&s_app) && !s_policy.night && !s_singing && s_face.fx == FX_NONE;
+    switch (story_update(&s_story, now, app_needs(&s_app), idle, !s_app.save.muted)) {
+        case STORY_ALARM:
+            ESP_LOGI(TAG, "story: alarm (needs 0x%x)", app_needs(&s_app));
+            sound_fx(SND_ALARM);
+            led_pattern(LED_SIREN);
+            face_fx(&s_face, FX_ALARM, NULL, now, 4000);
+            break;
+        case STORY_GLITCH: {
+            const char *line = story_log(&s_story);
+            ESP_LOGI(TAG, "story: glitch \"%s\"", line);
+            sound_fx(SND_GLITCH);
+            led_pattern(LED_GLITCH);
+            face_fx(&s_face, FX_GLITCH, line, now, 1800);
+            break;
+        }
+        case STORY_SONG:
+            if (sound_song(story_song(&s_story))) {
+                s_singing = true;
+                face_fx(&s_face, FX_SING, NULL, now, 0);
+            }
+            break;
+        case STORY_NONE:
+            break;
+    }
 }
 
 void app_main(void) {
@@ -134,6 +209,8 @@ void app_main(void) {
     storage_load(&s_save);
     sound_init();
     sound_set_muted(s_save.muted);
+    led_init();
+    sound_set_note_hook(note_flash);
     input_init();
     input_accel_set_orient(s_save.orient);
     input_subscribe(on_input, NULL);
@@ -143,11 +220,12 @@ void app_main(void) {
     face_init(&s_face, esp_random(), now);
     policy_init(&s_policy);
     app_init(&s_app, &ENV, &s_save, esp_random());
+    story_init(&s_story, esp_random(), now);
     uint64_t next_battery = now_ms64() + BATTERY_SAMPLE_MS;
 
-    ESP_LOGI(TAG, "v0.4 running; buttons=%d accel=%d sound=%d battery_adc=%d wifi=%d ble=%d",
-             FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_SOUND, FEATURE_BATTERY_ADC, FEATURE_WIFI,
-             FEATURE_BLE);
+    ESP_LOGI(TAG, "v0.5 running; buttons=%d accel=%d sound=%d led=%d battery_adc=%d wifi=%d ble=%d",
+             FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_SOUND, FEATURE_LED, FEATURE_BATTERY_ADC,
+             FEATURE_WIFI, FEATURE_BLE);
     sound_hello();
 
     for (;;) {
@@ -178,10 +256,14 @@ void app_main(void) {
         const int mood = app_take_mood(&s_app);
         if (app_take_sleep(&s_app)) {
             policy_sleep(&s_policy);  // night starts at the next policy_update
+            sound_goodnight();
         } else if (was_app && !app_active(&s_app)) {
             // Back from the menu or a game: the face shows how it went.
             face_react(&s_face, mood >= 0 ? (expression_t)mood : EXPR_HAPPY, now, 4000);
         }
+
+        if (s_singing && app_active(&s_app)) stop_song(INPUT_NONE, now);
+        run_story(now);
 
         int mg[3];
         if (!app_active(&s_app) && input_accel_mg(mg)) face_feel(&s_face, mg, oriented(), now);

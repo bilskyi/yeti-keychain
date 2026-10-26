@@ -54,6 +54,14 @@ typedef enum {
     IDLE_HUM,     // music notes drifting up
 } idle_kind_t;
 
+// A full-face effect on top of (or instead of) the expression.
+typedef enum {
+    FX_NONE = 0,
+    FX_ALARM,   // the screen flashes, a warning sign blinks
+    FX_GLITCH,  // the picture tears, a line of the log flickers up
+    FX_SING,    // eyes shut happily, mouth going, notes flying
+} face_fx_t;
+
 // Something happened that wants a sound; main.c plays it (face_take_cue).
 typedef enum {
     CUE_NONE = 0,
@@ -116,6 +124,10 @@ typedef struct {
     uint32_t still_since;  // last time it moved
     int low_g;             // consecutive near-weightless samples
     uint32_t whee_until;   // no second WHEE before this
+
+    face_fx_t fx;
+    uint32_t fx_since, fx_until;  // fx_until 0 = until face_fx_stop
+    const char *fx_text;          // FX_GLITCH: the log line
 } face_t;
 
 void face_init(face_t *f, uint32_t seed, uint32_t now);
@@ -141,6 +153,10 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now);
 void face_feel(face_t *f, const int mg[3], bool oriented, uint32_t now);
 
 void face_set_needs(face_t *f, uint8_t needs);  // PET_NEED_* bits
+
+// Starts an effect for ms (0 = until stopped). `text` must outlive it.
+void face_fx(face_t *f, face_fx_t fx, const char *text, uint32_t now, uint32_t ms);
+void face_fx_stop(face_t *f);
 face_cue_t face_take_cue(face_t *f);
 
 void face_update(face_t *f, uint32_t now);

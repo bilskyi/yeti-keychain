@@ -60,7 +60,9 @@
 | LIS3DH INT1 (I1) | **GPIO0** |
 | LIS3DH SDO, CS | leave unconnected (breakout straps them; address 0x18 or 0x19, both probed) |
 | Buzzer + | **GPIO10** |
-| Buzzer − | **GND** (or GPIO20 with `PIN_BUZZER_BRIDGE 20`: bridge, louder) |
+| Buzzer − | **GND** (or GPIO21 with `PIN_BUZZER_BRIDGE 21`: bridge, louder) |
+| Red LED, long leg (+, anode) | **GPIO20** (no resistor: the pin runs at its weakest drive, `LED_DRIVE_CAP 0`) |
+| Red LED, short leg (−, cathode, flat side) | **GND** |
 
 ```
                  ESP32-C3 Super Mini

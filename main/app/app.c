@@ -10,7 +10,7 @@
 
 static const char *const ITEM_NAMES[ITEM_COUNT] = {
     "FEED", "GAMES", "PET", "SLEEP", "SOUND", "SETUP", "BACK",
-    "DICE", "COIN", "REACTION", "CATCH", "FLAPPY", "SNAKE", "MEMORY", "MENU",
+    "DICE", "COIN", "REACTION", "CATCH", "FLAPPY", "SNAKE", "MEMORY", "MUSIC", "MENU",
 };
 
 const char *app_item_name(app_item_t it) {
@@ -20,7 +20,7 @@ const char *app_item_name(app_item_t it) {
 static const app_item_t TOP[] = {ITEM_FEED, ITEM_GAMES, ITEM_STATS, ITEM_SLEEP,
                                  ITEM_SOUND, ITEM_SETUP, ITEM_BACK};
 static const app_item_t GAMES[] = {ITEM_DICE,   ITEM_COIN,  ITEM_REACTION, ITEM_CATCH,
-                                   ITEM_FLAPPY, ITEM_SNAKE, ITEM_MEMORY,   ITEM_UP};
+                                   ITEM_FLAPPY, ITEM_SNAKE, ITEM_MEMORY,   ITEM_MUSIC, ITEM_UP};
 static const struct {
     const app_item_t *items;
     int n;
@@ -72,7 +72,12 @@ void app_game_over(gfx_t *g, int score, bool best, int saved_best) {
         app_itoa(saved_best, b + 5);
         font_draw_centered(g, 64, 42, b, 1, GFX_WHITE);
     }
-    font_draw_centered(g, 64, 54, "A: AGAIN", 1, GFX_WHITE);
+    app_hint(g, "A:AGAIN", "B:MENU");
+}
+
+void app_hint(gfx_t *g, const char *a_does, const char *b_does) {
+    font_draw(g, 2, 57, a_does, 1, GFX_WHITE);
+    font_draw(g, GFX_W - 2 - font_width(b_does, 1), 57, b_does, 1, GFX_WHITE);
 }
 
 void app_bar(gfx_t *g, int x, int y, int w, int h, int value, int max) {
@@ -110,13 +115,10 @@ void app_itoa(int v, char *out) {
 }
 
 void app_mini_face(gfx_t *g, int cx, int cy, int spread, int r, gfx_color_t c) {
-    gfx_fill_circle(g, cx - spread, cy, r, c);
-    gfx_fill_circle(g, cx + spread, cy, r, c);
-    const int w = spread / 2 + 1;
-    for (int x = -w; x <= w; x++) {
-        const int y = cy + 1 + (2 * (w * w - x * x)) / (w * w);
-        gfx_fill_rect(g, cx + x, y, 1, 2, c);
-    }
+    // The EMO face, small: two pill eyes, r wide and 2.5 r tall.
+    const int w = 2 * r, h = 5 * r;
+    gfx_fill_rrect(g, cx - spread - r, cy - h / 2, w, h, r, c);
+    gfx_fill_rrect(g, cx + spread - r, cy - h / 2, w, h, r, c);
 }
 
 void app_heart(gfx_t *g, int cx, int cy, int s) {
@@ -215,6 +217,14 @@ static void icon(gfx_t *g, app_item_t it, int cx, int cy, bool muted) {
             gfx_pixel(g, cx + 5, cy - 13, GFX_BLACK);
             break;
         }
+        case ITEM_MUSIC:  // two quavers
+            gfx_fill_circle(g, cx - 8, cy + 8, 4, GFX_WHITE);
+            gfx_fill_circle(g, cx + 8, cy + 5, 4, GFX_WHITE);
+            gfx_fill_rect(g, cx - 5, cy - 10, 2, 18, GFX_WHITE);
+            gfx_fill_rect(g, cx + 11, cy - 13, 2, 18, GFX_WHITE);
+            gfx_fill_triangle(g, cx - 5, cy - 10, cx + 13, cy - 13, cx + 13, cy - 9, GFX_WHITE);
+            gfx_fill_triangle(g, cx - 5, cy - 10, cx - 5, cy - 6, cx + 13, cy - 9, GFX_WHITE);
+            break;
         case ITEM_MEMORY:  // two eyes, one lit
             gfx_fill_circle(g, cx - 8, cy, 7, GFX_WHITE);
             gfx_fill_circle(g, cx + 8, cy, 7, GFX_WHITE);
@@ -291,19 +301,20 @@ static void render_menu(const app_t *a, gfx_t *g) {
     } else {
         draw_item(a, g, a->item, 0);
     }
-    // Page dots along the bottom: where we are in this list.
+    // The hint line, with page dots between: where we are in this list.
+    app_hint(g, "A:OK", "B:NEXT");
     int n = 0;
     for (int i = 0; i < LISTS[a->list].n; i++) n += item_available(a, list_item(a, i));
-    int x = 64 - (n - 1) * 4;
+    int x = 58 - (n - 1) * 5 / 2;
     for (int i = 0; i < LISTS[a->list].n; i++) {
         const app_item_t it = list_item(a, i);
         if (!item_available(a, it)) continue;
         if (it == a->item) {
-            gfx_fill_circle(g, x, 59, 2, GFX_WHITE);
+            gfx_fill_circle(g, x, 60, 2, GFX_WHITE);
         } else {
-            gfx_pixel(g, x, 59, GFX_WHITE);
+            gfx_pixel(g, x, 60, GFX_WHITE);
         }
-        x += 8;
+        x += 5;
     }
 }
 
@@ -344,6 +355,7 @@ void app_open(app_t *a, uint32_t now) {
 }
 
 void app_close(app_t *a) {
+    if (a->mode == APP_GAME && a->item == ITEM_MUSIC) music_leave(a);
     a->mode = APP_OFF;
 }
 
@@ -362,7 +374,8 @@ bool app_take_sleep(app_t *a) {
 #define EACH_SCREEN(X)                                                             \
     X(ITEM_DICE, dice) X(ITEM_COIN, coin) X(ITEM_REACTION, reaction)               \
     X(ITEM_CATCH, catch) X(ITEM_FLAPPY, flappy) X(ITEM_SNAKE, snake)               \
-    X(ITEM_MEMORY, memory) X(ITEM_FEED, feed) X(ITEM_STATS, stats) X(ITEM_SETUP, setup)
+    X(ITEM_MEMORY, memory) X(ITEM_FEED, feed) X(ITEM_STATS, stats) X(ITEM_SETUP, setup)  \
+    X(ITEM_MUSIC, music)
 
 static void start_game(app_t *a, uint32_t now) {
     memset(&a->g, 0, sizeof(a->g));
@@ -452,6 +465,7 @@ void app_on_event(app_t *a, input_event_t ev, uint32_t now) {
     }
     if (game_event(a, ev, now)) return;
     if (ev == INPUT_BTN_B_SHORT) {  // anything the game did not take: B is back
+        if (a->item == ITEM_MUSIC) music_leave(a);
         app_play(a, SND_BACK);
         a->mode = APP_MENU;
         a->sliding = false;
@@ -465,6 +479,7 @@ static bool in_play(const app_t *a) {
     if (a->item == ITEM_FLAPPY) return a->g.fl.phase == FLAPPY_PLAY;
     if (a->item == ITEM_SNAKE) return a->g.snake.phase == SNAKE_PLAY;
     if (a->item == ITEM_SETUP) return false;  // its level bubble always moves
+    if (a->item == ITEM_MUSIC) return a->g.music.playing;
     return app_is_animating(a);
 }
 

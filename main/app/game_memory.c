@@ -136,7 +136,7 @@ void memory_render(const app_t *a, gfx_t *g) {
         gfx_fill_circle(g, 78, 31, 8, GFX_WHITE);
         gfx_fill_circle(g, 78, 31, 6, GFX_BLACK);
         font_draw_centered(g, 64, 46, "WATCH THEN A / B", 1, GFX_WHITE);
-        font_draw_centered(g, 64, 56, "A: START", 1, GFX_WHITE);
+        app_hint(g, "A:START", "B:BACK");
         return;
     }
     if (m->phase == MEM_OVER && app_elapsed(a->now, m->t0, 600)) {

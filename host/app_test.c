@@ -11,6 +11,8 @@
 #include "face/face.h"
 #include "input/orient.h"
 #include "pet/pet.h"
+#include "pet/story.h"
+#include "sound/rtttl.h"
 
 #define FRAME 33
 
@@ -22,6 +24,8 @@ static int tilt_mg;
 static int raw_mg[3];
 static int8_t applied[3];
 static int orients;
+static int song_on = -1;  // the song "playing", -1 = none
+static bool muted_fake;
 
 static void fake_play(app_sound_t s) { sounds[s]++; }
 static void fake_save(const app_save_t *s) {
@@ -41,7 +45,17 @@ static void fake_orient(const int8_t *map) {
     for (int i = 0; i < 3; i++) applied[i] = map[i];
     orients++;
 }
+static bool fake_song(int i) {
+    if (muted_fake) return false;
+    song_on = i;
+    return true;
+}
+static void fake_song_stop(void) { song_on = -1; }
+static bool fake_song_playing(void) { return song_on >= 0; }
 static const app_env_t ENV = {
+    .song = fake_song,
+    .song_stop = fake_song_stop,
+    .song_playing = fake_song_playing,
     .play = fake_play,
     .save = fake_save,
     .mute = fake_mute,
@@ -59,6 +73,8 @@ static void reset_fakes(void) {
     memset(raw_mg, 0, sizeof(raw_mg));
     memset(applied, 0, sizeof(applied));
     orients = 0;
+    song_on = -1;
+    muted_fake = false;
 }
 
 static void run(app_t *a, uint32_t ms, uint32_t *now) {
@@ -123,7 +139,7 @@ static void test_menu(void) {
         assert(a.item >= ITEM_DICE);
         visited++;
     }
-    assert(visited == 7);
+    assert(visited == 8);
     ev(&a, INPUT_BTN_A_SHORT, &now);
     assert(a.list == 0 && a.item == ITEM_GAMES && app_active(&a));
 
@@ -604,6 +620,128 @@ static void test_render_all(void) {
     }
 }
 
+static void test_rtttl(void) {
+    note_t n[64];
+    // a quarter at 120 bpm = 500 ms; dotted = 750; rests stay rests; A7 = 3520.
+    const int k = rtttl_parse("T:d=4,o=7,b=120:a,8p,a.,2c#6,16b#", n, 64, 0);
+    assert(k == 5);
+    assert(n[0].hz == 3520 && n[0].ms == 500);
+    assert(n[1].hz == 0 && n[1].ms == 250);
+    assert(n[2].hz == 3520 && n[2].ms == 750);
+    assert(n[3].hz == 1108 && n[3].ms == 1000);  // C#6
+    assert(n[4].hz == 4186 && n[4].ms == 125);   // b#7 = C8
+    assert(n[5].hz == 0 && n[5].ms == 0);
+    // Gaps split notes, never rests; a tiny buffer stays terminated.
+    assert(rtttl_parse("T:d=4,o=7,b=120:a,p,a", n, 64, 20) == 5);
+    assert(n[0].ms == 480 && n[1].hz == 0 && n[1].ms == 20 && n[2].hz == 0 && n[2].ms == 500);
+    assert(n[3].ms == 480 && n[4].ms == 20);
+    assert(rtttl_parse("T:d=4,o=7,b=120:a,a,a,a,a,a", n, 3, 0) == 2 && n[2].ms == 0);
+    assert(rtttl_parse("garbage", n, 64, 0) == 0 && n[0].ms == 0);
+    // Every song parses, fits the player's buffer, and sits where the
+    // buzzer is loud (no note below 1 kHz or above 4.5 kHz).
+    static note_t big[320];
+    assert(songs_count() == 7);
+    for (int s = 0; s < songs_count(); s++) {
+        const int m = rtttl_parse(song_rtttl(s), big, 320, 18);
+        uint32_t ms = 0;
+        for (int i = 0; i < m; i++) {
+            ms += big[i].ms;
+            assert(!big[i].hz || (big[i].hz >= 1000 && big[i].hz <= 4500));
+        }
+        printf("  %-15s %3d steps %5.1f s\n", song_name(s), m, ms / 1000.0);
+        assert(m > 20 && m < 318 && ms > 5000 && ms < 40000);
+    }
+}
+
+static void test_story(void) {
+    static story_t s;
+    uint32_t now = 1000;
+    story_init(&s, 5, now);
+    int alarms = 0, glitches = 0, songs = 0, last_song = -1;
+    uint32_t last_event = 0;
+    bool spaced = true;
+    const char *first = NULL;
+    // Eight hours, happy and idle: glitches and songs, never two close together.
+    for (uint32_t t = 0; t < 8u * 3600u * 1000u; t += 200) {
+        const story_event_t e = story_update(&s, now += 200, 0, true, true);
+        if (e == STORY_NONE) continue;
+        if (last_event && now - last_event < STORY_GAP_MS) spaced = false;
+        last_event = now;
+        if (e == STORY_GLITCH) {
+            glitches++;
+            const char *line = story_log(&s);
+            if (!first) first = line;
+        }
+        if (e == STORY_SONG) {
+            assert(story_song(&s) != last_song && story_song(&s) < songs_count());
+            last_song = story_song(&s);
+            songs++;
+        }
+        alarms += e == STORY_ALARM;
+    }
+    printf("  8 h: %d glitches, %d songs, %d alarms\n", glitches, songs, alarms);
+    assert(spaced && alarms == 0 && glitches >= 8 && glitches <= 35 && songs >= 5 && songs <= 20);
+    assert(strcmp(first, "YETI-7 ONLINE") == 0);  // the story starts at the start
+
+    // Hungry: an alarm about 10 s later, again 20 min later, none once fed.
+    story_init(&s, 6, now);
+    uint32_t t0 = now, a1 = 0, a2 = 0;
+    for (int k = 0; k < 25 * 60 * 5; k++) {
+        const story_event_t e = story_update(&s, now += 200, PET_NEED_FOOD, true, true);
+        if (e == STORY_ALARM && !a1) a1 = now;
+        else if (e == STORY_ALARM && !a2) a2 = now;
+    }
+    assert(a1 && a1 - t0 >= 10000 && a1 - t0 < 12000);
+    assert(a2 && a2 - a1 >= 20u * 60u * 1000u);
+    for (int k = 0; k < 30 * 60 * 5; k++) assert(story_update(&s, now += 200, 0, true, true) != STORY_ALARM);
+
+    // Busy (menu open, night): nothing starts; it waits for idle.
+    story_init(&s, 7, now);
+    for (int k = 0; k < 2 * 3600 * 5; k++) assert(story_update(&s, now += 200, PET_NEED_FUN, false, true) == STORY_NONE);
+    assert(story_update(&s, now += 200, PET_NEED_FUN, true, true) != STORY_NONE);
+    // Muted: no songs, ever.
+    story_init(&s, 8, now);
+    for (int k = 0; k < 8 * 3600 * 5; k++) assert(story_update(&s, now += 200, 0, true, false) != STORY_SONG);
+}
+
+static void test_music(void) {
+    static app_t a;
+    uint32_t now = 1000;
+    reset_fakes();
+    app_init(&a, &ENV, NULL, 13);
+    open_item(&a, ITEM_MUSIC, &now);
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    assert(song_on == 0 && a.g.music.playing && app_is_animating(&a));
+    // Plays on without input (no idle timeout mid-song)...
+    run(&a, APP_GAME_IDLE_MS + 1000, &now);
+    assert(app_active(&a) && song_on == 0);
+    // ...B goes to the next song and stops this one; A stops too.
+    ev(&a, INPUT_BTN_B_SHORT, &now);
+    assert(song_on == -1 && a.g.music.song == 1 && a.mode == APP_GAME);
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    assert(song_on == 1);
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    assert(song_on == -1);
+    // Finished by itself: not playing any more.
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    song_on = -1;
+    run(&a, 100, &now);
+    assert(!a.g.music.playing);
+    // Leaving with a song on stops it.
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    ev(&a, INPUT_BTN_B_LONG, &now);
+    assert(!app_active(&a) && song_on == -1);
+    // Muted: a fail beep, nothing plays.
+    open_item(&a, ITEM_MUSIC, &now);
+    muted_fake = true;
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    assert(!a.g.music.playing && sounds[SND_FAIL] == 1);
+    // The last choice is BACK.
+    while (a.g.music.song != songs_count()) ev(&a, INPUT_BTN_B_SHORT, &now);
+    ev(&a, INPUT_BTN_A_SHORT, &now);
+    assert(a.mode == APP_MENU && a.item == ITEM_MUSIC);
+}
+
 int main(void) {
 #define RUN(t) (printf("%s\n", #t), t())
     RUN(test_menu);
@@ -619,6 +757,9 @@ int main(void) {
     RUN(test_memory);
     RUN(test_setup);
     RUN(test_render_all);
+    RUN(test_rtttl);
+    RUN(test_story);
+    RUN(test_music);
     printf("all app tests passed\n");
     return 0;
 }

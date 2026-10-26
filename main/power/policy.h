@@ -23,8 +23,8 @@ void policy_init(policy_t *p);
 // for their own things, so BTN_A_LONG must not put the face to sleep there).
 void policy_note_activity(policy_t *p, uint64_t now_ms);
 
-// Any input wakes the face for the rest of the current night window.
-// BTN_A_LONG while awake forces night until the next input.
+// Any input wakes the face for the rest of the current night window, and
+// ends a night started by policy_sleep.
 void policy_on_event(policy_t *p, input_event_t ev, uint64_t now_ms);
 
 // Go to sleep now (the menu's SLEEP), until the next input.

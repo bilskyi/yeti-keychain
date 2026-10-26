@@ -4,8 +4,9 @@
 // does not bend the pitch. An esp_timer steps through the notes; light sleep
 // is held off only while a sound plays.
 //
-// It only ever sounds in answer to input (and once at boot): scheduled night
-// changes are silent, so it never beeps in a pocket on its own.
+// It sounds in answer to input, once at boot, and for the pet's own events
+// (alarms when it needs something, glitches, a random song; story.c), never
+// at night.
 // Mute is a menu setting, kept in NVS by main.c (sound_set_muted at boot).
 
 #pragma once
@@ -18,13 +19,25 @@
 #if FEATURE_SOUND
 void sound_init(void);
 void sound_hello(void);
+void sound_goodnight(void);
 void sound_on_event(input_event_t ev);
 void sound_fx(app_sound_t fx);  // menu and game sounds
 void sound_set_muted(bool muted);
+// Songs (sound/rtttl.h). A song is cut off by any other sound.
+bool sound_song(int i);  // false when muted or no such song
+void sound_stop(void);
+bool sound_song_playing(void);
+// Called (from the timer task) as each note of a song starts; for the LED.
+void sound_set_note_hook(void (*hook)(uint16_t hz, uint16_t ms));
 #else
 static inline void sound_init(void) {}
 static inline void sound_hello(void) {}
+static inline void sound_goodnight(void) {}
 static inline void sound_on_event(input_event_t ev) { (void)ev; }
 static inline void sound_fx(app_sound_t fx) { (void)fx; }
 static inline void sound_set_muted(bool muted) { (void)muted; }
+static inline bool sound_song(int i) { (void)i; return false; }
+static inline void sound_stop(void) {}
+static inline bool sound_song_playing(void) { return false; }
+static inline void sound_set_note_hook(void (*hook)(uint16_t hz, uint16_t ms)) { (void)hook; }
 #endif

@@ -133,6 +133,30 @@
   describe the screen frame (sign -1). NVS record v2, migrates v1 scores.
   Host tests for all of it; flashed, boot log clean, not yet played.
 
+- 2026-10-26 **v0.5: backstory, LED, songs, simpler controls.** YETI-7 lore
+  (`pet/story.c`): a siren alarm (buzzer + red LED + flashing screen) 10 s
+  after a need appears and every 20 min while it lasts; random glitches
+  (torn picture, garbled chirps, a log line: "SIGNAL LOST"...) every 15-45
+  min; a random song every 25-70 min (first ones within minutes of power-on),
+  shake to stop it (dizzy + "hmph"), sang to the end = proud. Songs are RTTTL
+  strings (`sound/rtttl.c`: Jingle Bells, Korobeiniki, Mountain King, Ode to
+  Joy, Twinkle, Fur Elise, Happy Birthday) and the LED flashes per note.
+  Jukebox (GAMES > MUSIC). Red LED on GPIO20 with no resistor (weakest pad
+  drive + PWM, `led/led.c`). Controls: face A = pet, B = menu; no long
+  presses needed (A long = pet, B long on the face = cycle faces, hidden);
+  hint line "A:... B:..." on every screen; SLEEP only from the menu.
+  Face concepts for the redesign: https://claude.ai/artifact/NKgQjLCCMvRAATcBG9vrg2
+
+- 2026-10-26 **Face: EMO style** (Sasha: "emo style"). No mouth (only yawn
+  and sneeze); tall rounded pill eyes 24x30 carry every emotion: happy =
+  arches, angry = inner top cut, sad = outer cut + tear, sleepy = lidded,
+  scared = small trembling pills + "!". Hearts/stars/spirals/X/chevrons
+  enlarged. Mini faces (menu, coin, feeding) use pills too. ~1200 lit px
+  awake (was ~750). Flashed, boot clean.
+  Sasha: "even bigger" -> eyes 32x42 (from 24x30), all shapes scaled;
+  ~2400 lit px awake. Thought bubble and warning sign get a black outline
+  where they overlap the right eye.
+
 ## In progress
 - Yeti: waiting for Sasha's review; then caliper measurements (boards,
   battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design

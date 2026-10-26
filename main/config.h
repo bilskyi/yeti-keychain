@@ -38,9 +38,10 @@
 #define PIN_BATTERY_ADC 4    // 1M/1M divider + 100 nF, ADC1 channel 4
 #define PIN_BUZZER 10        // passive buzzer, LEDC PWM; not a wake source
 // Buzzer's other leg: -1 = on GND (current wiring; loud enough per Sasha).
-// Set 20 and move the leg to GPIO20 for a bridge: the second pin is driven in
+// Set 21 and move the leg to GPIO21 for a bridge: the second pin is driven in
 // antiphase, doubling the voltage across the buzzer with no transistor.
 #define PIN_BUZZER_BRIDGE -1
+#define PIN_LED 20  // red LED: long leg (anode) here, short leg to GND, no resistor
 
 // ---------------------------------------------------------------------------
 // Feature flags. Display is always on. Buttons, LIS3DH and buzzer are fitted
@@ -55,6 +56,9 @@
 #ifndef FEATURE_SOUND
 #define FEATURE_SOUND 1
 #endif
+#ifndef FEATURE_LED
+#define FEATURE_LED 1
+#endif
 #ifndef FEATURE_BATTERY_ADC
 #define FEATURE_BATTERY_ADC 0
 #endif
@@ -64,6 +68,14 @@
 #ifndef FEATURE_BLE
 #define FEATURE_BLE 0
 #endif
+
+// ---------------------------------------------------------------------------
+// LED (FEATURE_LED). There is no series resistor: the weakest pad drive
+// (about 5 mA source) is what limits the current, and PWM keeps the average
+// lower still. Don't raise LED_DRIVE_CAP without adding a resistor (~100 R).
+// ---------------------------------------------------------------------------
+#define LED_DRIVE_CAP 0
+#define LED_MAX_PCT 60  // PWM duty at "full" brightness
 
 // ---------------------------------------------------------------------------
 // Buttons

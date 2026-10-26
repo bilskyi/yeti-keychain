@@ -14,7 +14,8 @@ SRCS    := ../main/display/gfx.c ../main/face/face.c ../main/face/mood.c ../main
            ../main/input/motion_logic.c ../main/display/font.c ../main/app/app.c \
            ../main/app/game_luck.c ../main/app/game_reaction.c ../main/app/game_catch.c \
            ../main/app/game_flappy.c ../main/app/game_snake.c ../main/app/game_memory.c \
-           ../main/app/care.c ../main/pet/pet.c ../main/input/orient.c
+           ../main/app/care.c ../main/pet/pet.c ../main/input/orient.c \
+           ../main/app/game_music.c ../main/pet/story.c ../main/sound/rtttl.c
 OUT     := out
 
 .PHONY: test preview analyze clean

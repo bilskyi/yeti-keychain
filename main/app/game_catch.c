@@ -134,7 +134,7 @@ void catch_render(const app_t *a, gfx_t *g) {
         gfx_fill_circle(g, 88, 26, 3, GFX_WHITE);
         font_draw(g, 30, 32, "+1", 1, GFX_WHITE);
         font_draw(g, 80, 32, "-1", 1, GFX_WHITE);
-        font_draw_centered(g, 64, 44, "A: START", 1, GFX_WHITE);
+        font_draw_centered(g, 64, 44, "A:START  B:BACK", 1, GFX_WHITE);
         player(g, c->x);
         return;
     }

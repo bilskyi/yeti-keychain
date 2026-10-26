@@ -3,6 +3,7 @@
 #if FEATURE_SOUND
 
 #include "sound/sound.h"
+#include "sound/rtttl.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -25,10 +26,8 @@ static const char *TAG = "sound";
 #define DUTY_BITS LEDC_TIMER_10_BIT
 #define DUTY_ON ((1u << 10) * SOUND_DUTY_PCT / 100)
 
-typedef struct {
-    uint16_t hz;  // 0 = rest
-    uint16_t ms;  // 0 = end of the tune
-} note_t;
+#define SONG_MAX 320  // notes and gaps of the longest song
+#define SONG_GAP_MS 18
 
 // Short on purpose: every one is under half a second. Pitches sit at
 // 1.5-4 kHz, around a small buzzer's resonance (~2-3 kHz): below ~1 kHz the
@@ -70,6 +69,16 @@ static const note_t FX_WHEE[] = {{1568, 40}, {1976, 40}, {2349, 40}, {2794, 40},
 // "ah... ah... CHOO": two rising breaths, then a burst at the "choo" frame.
 static const note_t FX_SNEEZE[] = {{1760, 120}, {0, 160}, {2093, 140}, {0, 280}, {3951, 30},
                                    {2349, 30}, {1568, 60}, {0, 0}};
+// A siren: two tones swapping, then a rising wail, about two seconds.
+static const note_t FX_ALARM[] = {{2637, 180}, {3520, 180}, {2637, 180}, {3520, 180},
+                                  {2093, 60},  {2349, 60},  {2637, 60},  {2960, 60},
+                                  {3322, 60},  {3729, 60},  {3951, 200}, {0, 120},
+                                  {2637, 180}, {3520, 180}, {2637, 180}, {3520, 300}, {0, 0}};
+// Garbled data: a burst of unrelated chirps, like a modem having a bad day.
+static const note_t FX_GLITCH[] = {{3951, 20}, {1568, 30}, {0, 20}, {3322, 15}, {2093, 40},
+                                   {0, 60},    {3729, 15}, {1760, 15}, {3951, 15}, {0, 40},
+                                   {1568, 90}, {0, 30},    {2794, 20}, {2349, 20}, {0, 0}};
+static const note_t FX_HMPH[] = {{2349, 80}, {0, 40}, {1760, 220}, {0, 0}};
 static const note_t FX_HUM[] = {{2349, 140}, {2637, 140}, {3136, 200}, {2637, 140}, {2349, 280},
                                 {0, 0}};
 
@@ -81,6 +90,7 @@ static const note_t *const FX[SND_COUNT] = {
     [SND_EAT] = FX_EAT,       [SND_LEVELUP] = FX_LEVELUP, [SND_TONE_L] = FX_TONE_L,
     [SND_TONE_R] = FX_TONE_R, [SND_HI] = FX_HI,         [SND_SCARED] = FX_SCARED,
     [SND_WHEE] = FX_WHEE,     [SND_SNEEZE] = FX_SNEEZE, [SND_HUM] = FX_HUM,
+    [SND_ALARM] = FX_ALARM,   [SND_GLITCH] = FX_GLITCH, [SND_HMPH] = FX_HMPH,
 };
 
 static bool s_muted;
@@ -89,6 +99,9 @@ static esp_timer_handle_t s_timer;
 static esp_pm_lock_handle_t s_awake;
 static const note_t *s_tune;  // current note, NULL when silent
 static bool s_locked;
+static note_t s_song[SONG_MAX];
+static bool s_is_song;  // s_tune points into s_song
+static void (*s_note_hook)(uint16_t hz, uint16_t ms);
 // play() runs in the main task, next_note() in the esp_timer task.
 static SemaphoreHandle_t s_mutex;
 
@@ -109,6 +122,7 @@ static void tone(uint16_t hz) {
 static void finish(void) {
     tone(0);
     s_tune = NULL;
+    s_is_song = false;
     if (s_locked) {
         esp_pm_lock_release(s_awake);
         s_locked = false;
@@ -122,6 +136,7 @@ static void step(void) {
         return;
     }
     tone(s_tune->hz);
+    if (s_is_song && s_note_hook) s_note_hook(s_tune->hz, s_tune->ms);
     const uint16_t ms = s_tune->ms;
     s_tune++;
     esp_timer_start_once(s_timer, (uint64_t)ms * 1000);
@@ -139,6 +154,7 @@ static void play(const note_t *tune) {
     xSemaphoreTake(s_mutex, portMAX_DELAY);
     esp_timer_stop(s_timer);  // a new sound cuts the old one off
     if (!s_locked && esp_pm_lock_acquire(s_awake) == ESP_OK) s_locked = true;
+    s_is_song = tune == s_song;
     s_tune = tune;
     step();
     xSemaphoreGive(s_mutex);
@@ -195,6 +211,10 @@ void sound_hello(void) {
     play(HELLO);
 }
 
+void sound_goodnight(void) {
+    play(GOODNIGHT);
+}
+
 void sound_on_event(input_event_t ev) {
     const note_t *tune = NULL;
     switch (ev) {
@@ -203,12 +223,12 @@ void sound_on_event(input_event_t ev) {
         case INPUT_SHAKE: tune = SHAKE; break;
         case INPUT_TILT_LEFT:
         case INPUT_TILT_RIGHT: tune = TILT; break;
-        case INPUT_BTN_A_SHORT: tune = CLICK_A; break;
-        case INPUT_BTN_B_SHORT:
+        case INPUT_BTN_A_SHORT:
+        case INPUT_BTN_A_LONG: tune = CLICK_A; break;
+        case INPUT_BTN_B_LONG:
         case INPUT_BTN_C_SHORT: tune = CLICK_BC; break;
         case INPUT_BTN_C_LONG: tune = HAPPY; break;
-        case INPUT_BTN_A_LONG: tune = GOODNIGHT; break;
-        case INPUT_BTN_B_LONG:  // opens the menu, which makes its own sound
+        case INPUT_BTN_B_SHORT:  // opens the menu, which makes its own sound
         case INPUT_BTN_A_PRESS:
         case INPUT_BTN_B_PRESS:
         case INPUT_BTN_C_PRESS:
@@ -220,6 +240,35 @@ void sound_on_event(input_event_t ev) {
 
 void sound_fx(app_sound_t fx) {
     if ((unsigned)fx < SND_COUNT) play(FX[fx]);
+}
+
+bool sound_song(int i) {
+    if (!s_ready || s_muted || i < 0 || i >= songs_count()) return false;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    esp_timer_stop(s_timer);  // s_song may be playing: stop before rewriting it
+    finish();
+    const int n = rtttl_parse(song_rtttl(i), s_song, SONG_MAX, SONG_GAP_MS);
+    xSemaphoreGive(s_mutex);
+    if (n == 0) return false;
+    ESP_LOGI(TAG, "song: %s (%d notes)", song_name(i), n);
+    play(s_song);
+    return true;
+}
+
+void sound_stop(void) {
+    if (!s_ready) return;
+    xSemaphoreTake(s_mutex, portMAX_DELAY);
+    esp_timer_stop(s_timer);
+    finish();
+    xSemaphoreGive(s_mutex);
+}
+
+bool sound_song_playing(void) {
+    return s_is_song;
+}
+
+void sound_set_note_hook(void (*hook)(uint16_t hz, uint16_t ms)) {
+    s_note_hook = hook;
 }
 
 void sound_set_muted(bool muted) {

@@ -186,11 +186,14 @@ static void test_reactions(void) {
         for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
     }
 
-    // B steps through every face except the low-battery one, then wraps.
+    // B is the menu's (main.c): the face ignores it.
     show(&f, EXPR_NEUTRAL, &now);
+    face_on_event(&f, INPUT_BTN_B_SHORT, now);
+    assert(!f.has_pending && f.expr == EXPR_NEUTRAL);
+    // B held steps through every face except the low-battery one, then wraps.
     int seen[EXPR_COUNT] = {0};
     for (int k = 0; k < EXPR_LOWBAT; k++) {
-        face_on_event(&f, INPUT_BTN_B_SHORT, now);
+        face_on_event(&f, INPUT_BTN_B_LONG, now);
         for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
         seen[f.expr]++;
     }
@@ -317,6 +320,50 @@ static void test_needs(void) {
     assert(shown >= 6 && shown <= 10);  // 4 s of every 15
 }
 
+static void test_fx(void) {
+    static face_t f;
+    static gfx_t g, plain;
+    uint32_t now = 5000;
+    face_init(&f, 31, now);
+    show(&f, EXPR_NEUTRAL, &now);
+    gfx_clear(&plain);
+    face_render(&f, &plain);
+
+    // Alarm: sad underneath, the screen flashes, then it ends on its own.
+    face_fx(&f, FX_ALARM, NULL, now, 4000);
+    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
+    assert(f.expr == EXPR_SAD && face_is_animating(&f));
+    f.now = f.fx_since + 160;  // an inverted flash frame
+    gfx_clear(&g);
+    face_render(&f, &g);
+    assert(lit(&g) > GFX_W * GFX_H / 2);
+    for (int i = 0; i < 150; i++) face_update(&f, now += FRAME);
+    assert(f.fx == FX_NONE);
+
+    // Glitch: the picture is torn and shows the log line, then "what?".
+    face_fx(&f, FX_GLITCH, "SIGNAL LOST", now, 1800);
+    for (int i = 0; i < 20; i++) face_update(&f, now += FRAME);
+    gfx_clear(&g);
+    face_render(&f, &g);
+    assert(memcmp(g.buf, plain.buf, sizeof(g.buf)) != 0);
+    for (int i = 0; i < 60; i++) face_update(&f, now += FRAME);
+    assert(f.fx == FX_NONE);
+    for (int i = 0; i < 20; i++) face_update(&f, now += FRAME);
+    assert(f.expr == EXPR_SURPRISED);
+
+    // Singing lasts until stopped, and the mood machine stays out of it.
+    face_fx(&f, FX_SING, NULL, now, 0);
+    for (int i = 0; i < 2000; i++) face_update(&f, now += FRAME);
+    assert(f.fx == FX_SING && face_is_animating(&f));
+    gfx_clear(&g);
+    face_render(&f, &g);
+    assert(lit(&g) > 60 && lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);
+    face_fx_stop(&f);
+    assert(f.fx == FX_NONE);
+    for (int i = 0; i < 20; i++) face_update(&f, now += FRAME);
+    assert(!f.has_pending || f.pending < EXPR_MOOD_COUNT);  // back to moods
+}
+
 static void test_night(void) {
     static face_t f;
     static gfx_t g;
@@ -372,12 +419,15 @@ static void test_policy(void) {
     policy_update(&p, cycle + 5);
     assert(!p.night);
     assert(policy_update(&p, cycle + night_at) && p.night);
-    // Long-press forces night during the day.
+    // A long press is just input now; the menu's SLEEP forces night until
+    // the next input.
     policy_init(&p);
     policy_on_event(&p, INPUT_BTN_A_LONG, 100);
-    assert(policy_update(&p, 200) && p.night);
-    policy_on_event(&p, INPUT_BTN_A_SHORT, 300);
-    assert(policy_update(&p, 400) && !p.night);
+    assert(!policy_update(&p, 200) && !p.night);
+    policy_sleep(&p);
+    assert(policy_update(&p, 300) && p.night);
+    policy_on_event(&p, INPUT_BTN_A_SHORT, 400);
+    assert(policy_update(&p, 500) && !p.night);
 
     // Burn-in: stays in range and actually moves.
     int moved = 0, px = 0, py = 0;
@@ -429,6 +479,7 @@ int main(void) {
     RUN(test_reactions);
     RUN(test_body_sense);
     RUN(test_needs);
+    RUN(test_fx);
     RUN(test_night);
     RUN(test_time_wrap);
     RUN(test_policy);

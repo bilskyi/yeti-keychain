@@ -127,8 +127,8 @@ void feed_update(app_t *a, uint32_t now) {
 // The Yeti, big, eating: dot eyes, mouth opening and shutting.
 static void eater(gfx_t *g, uint32_t t, int kind) {
     const bool open = t >= FLY_MS - 100 && ((t - (FLY_MS - 100)) / 130) % 3 != 2;
-    gfx_fill_circle(g, 34, 22, 8, GFX_WHITE);
-    gfx_fill_circle(g, 82, 22, 8, GFX_WHITE);
+    gfx_fill_rrect(g, 27, 10, 14, 22, 6, GFX_WHITE);  // pill eyes
+    gfx_fill_rrect(g, 75, 10, 14, 22, 6, GFX_WHITE);
     if (open) {
         gfx_fill_ellipse(g, 58, 42, 9, 7, GFX_WHITE);
         gfx_fill_ellipse(g, 58, 42, 6, 4, GFX_BLACK);
@@ -156,11 +156,12 @@ void feed_render(const app_t *a, gfx_t *g) {
     const uint32_t t = a->now - f->t0;
     switch (f->phase) {
         case FEED_PICK: {
-            draw_food(g, f->choice, 64, 18);
-            font_draw_centered(g, 64, 33, f->choice == FOOD_KINDS ? "BACK" : FOODS[f->choice].name, 2,
+            draw_food(g, f->choice, 64, 14);
+            font_draw_centered(g, 64, 27, f->choice == FOOD_KINDS ? "BACK" : FOODS[f->choice].name, 2,
                                GFX_WHITE);
-            font_draw(g, 8, 54, "FOOD", 1, GFX_WHITE);
-            app_bar(g, 36, 53, 84, 9, a->save.pet.food, PET_MAX);
+            font_draw(g, 8, 46, "FOOD", 1, GFX_WHITE);
+            app_bar(g, 36, 45, 84, 9, a->save.pet.food, PET_MAX);
+            app_hint(g, f->choice == FOOD_KINDS ? "A:OK" : "A:FEED", "B:NEXT");
             break;
         }
         case FEED_EAT:
@@ -313,14 +314,14 @@ void setup_render(const app_t *a, gfx_t *g) {
             font_draw_centered(g, 64, 16, "LAY ME FLAT", 1, GFX_WHITE);
             font_draw_centered(g, 64, 26, "SCREEN UP", 1, GFX_WHITE);
             gfx_fill_rect(g, 40, 40, 48, 4, GFX_WHITE);
-            font_draw_centered(g, 64, 54, "A: OK", 1, GFX_WHITE);
+            app_hint(g, "A:OK", "B:BACK");
             break;
         case SETUP_UPRIGHT:
             font_draw_centered(g, 64, 2, "2/2", 1, GFX_WHITE);
             font_draw_centered(g, 64, 16, "HOLD ME UPRIGHT", 1, GFX_WHITE);
             font_draw_centered(g, 64, 26, "LIKE NORMAL", 1, GFX_WHITE);
             gfx_fill_rect(g, 62, 36, 4, 14, GFX_WHITE);
-            font_draw_centered(g, 64, 54, "A: OK", 1, GFX_WHITE);
+            app_hint(g, "A:OK", "B:BACK");
             break;
         case SETUP_DONE: {
             font_draw_centered(g, 64, 4, "DONE!", 2, GFX_WHITE);
@@ -335,14 +336,14 @@ void setup_render(const app_t *a, gfx_t *g) {
             gfx_fill_rect(g, 56, 38, 1, 10, GFX_WHITE);
             gfx_fill_rect(g, 72, 38, 1, 10, GFX_WHITE);
             gfx_fill_circle(g, 64 - mg * 42 / 500, 42, 4, GFX_WHITE);
-            font_draw_centered(g, 64, 55, "A: AGAIN", 1, GFX_WHITE);
+            app_hint(g, "A:AGAIN", "B:BACK");
             break;
         }
         case SETUP_FAIL:
             font_draw_centered(g, 64, 8, "HMM...", 2, GFX_WHITE);
             font_draw_centered(g, 64, 28, "HOLD STILL AND", 1, GFX_WHITE);
             font_draw_centered(g, 64, 38, "TRY AGAIN", 1, GFX_WHITE);
-            font_draw_centered(g, 64, 54, "A: AGAIN", 1, GFX_WHITE);
+            app_hint(g, "A:AGAIN", "B:BACK");
             break;
     }
 }
