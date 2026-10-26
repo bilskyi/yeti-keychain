@@ -22,7 +22,7 @@
 #define EYE_RAD 11
 #define MOUTH_CX 64
 #define MOUTH_CY 50  // yawns and sneezes only
-#define STROKE 3     // line weight of > < and X eyes
+#define STROKE 3     // line weight of the X eyes
 
 #define GLANCE_X 12  // how far a glance moves the eyes sideways
 #define GLANCE_Y 3
@@ -576,15 +576,6 @@ static void draw_cut_eye(gfx_t *g, int cx, int cy, int w, int h, int open, int s
     }
 }
 
-// Big > or < for laughing and sneezing.
-static void draw_big_chevron(gfx_t *g, int cx, int cy, bool right) {
-    const int s = right ? 1 : -1;
-    for (int k = 0; k < 4; k++) {
-        gfx_line(g, cx - 11 * s + k, cy - 14, cx + 11 * s + k, cy, GFX_WHITE);
-        gfx_line(g, cx + 11 * s + k, cy, cx - 11 * s + k, cy + 14, GFX_WHITE);
-    }
-}
-
 static void draw_x(gfx_t *g, int cx, int cy) {
     for (int k = 0; k < STROKE; k++) {
         gfx_line(g, cx - 13 + k, cy - 13, cx + 13 + k, cy + 13, GFX_WHITE);
@@ -755,6 +746,7 @@ void face_render(const face_t *f, gfx_t *g) {
 
     // Whole-face motion: happy hops, laugh and anger shake.
     if (moving && (f->expr == EXPR_HAPPY || f->expr == EXPR_EXCITED)) dy -= abs(wave(t, 600, 2));
+    if (moving && f->expr == EXPR_LAUGH) dy -= abs(wave(t, 300, 3));  // giggling hops
     if (moving && (f->expr == EXPR_LAUGH || f->expr == EXPR_ANGRY)) dx += (t / 66) % 2 ? 1 : -1;
 
     const int lx = EYE_L_CX + dx, rx = EYE_R_CX + dx, ey = EYE_CY + dy;
@@ -762,12 +754,12 @@ void face_render(const face_t *f, gfx_t *g) {
     const int open = openness(f);
     const int yawn = yawn_amount(f);
 
-    // The "choo!" of a sneeze: eyes squeezed shut > <, a jolt down.
+    // The "choo!" of a sneeze: eyes squeezed shut to bars, a jolt down.
     if (f->idle == IDLE_SNEEZE) {
         const uint32_t st = f->now - f->idle_start;
         if (st >= SNEEZE_AT_MS && st < SNEEZE_AT_MS + SNEEZE_CHOO_MS) {
-            draw_big_chevron(g, lx, ey + 3, true);
-            draw_big_chevron(g, rx, ey + 3, false);
+            gfx_fill_rrect(g, lx - EYE_W / 2, ey + 3, EYE_W, 5, 2, GFX_WHITE);
+            gfx_fill_rrect(g, rx - EYE_W / 2, ey + 3, EYE_W, 5, 2, GFX_WHITE);
             draw_open_mouth(g, mx, my, 5, 4);
             for (int k = 0; k < 3; k++) gfx_pixel(g, mx - 4 + k * 4, my + 7 + k % 2, GFX_WHITE);
             return;
@@ -815,8 +807,8 @@ void face_render(const face_t *f, gfx_t *g) {
             if (moving) draw_tear(g, lx - 8, ey + EYE_H / 2 + 4 + (int)(t * 10 / ANIM_TEAR_MS));
             break;
         case EXPR_LAUGH:
-            draw_big_chevron(g, lx, ey, true);
-            draw_big_chevron(g, rx, ey, false);
+            draw_smile_eye(g, lx, ey);
+            draw_smile_eye(g, rx, ey);
             break;
         case EXPR_DIZZY: {
             const int phase = (int)(t / 16 % 64);

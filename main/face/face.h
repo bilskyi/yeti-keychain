@@ -33,7 +33,7 @@ typedef enum {
     EXPR_LOVE,
     EXPR_SAD,
     // Reactions only: input triggers them, the mood machine never picks them.
-    EXPR_LAUGH,    // > <
+    EXPR_LAUGH,    // happy arches, giggling hops
     EXPR_DIZZY,    // spinning spirals
     EXPR_KO,       // X X, a star circling
     EXPR_EXCITED,  // star eyes
