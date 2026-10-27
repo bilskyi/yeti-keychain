@@ -15,7 +15,8 @@ typedef struct {
     uint32_t hits[ACCEL_SHAKE_HITS];  // ring of recent shake-sample times
     int nhits;                        // how many slots are filled
     int next;
-    uint32_t quiet_until;  // after a shake: no tap, tilt or second shake
+    uint32_t quiet_until;  // after a shake: no tap or tilt
+    uint32_t shake_again;  // ...and no second shake before this
     bool quiet;
     uint32_t active_until;  // keep sampling fast until then
     bool active;

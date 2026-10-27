@@ -22,6 +22,9 @@
 
 #define DISPLAY_I2C_ADDR 0x3C  // the other common strap is 0x3D; init probes both
 #define DISPLAY_I2C_HZ 400000
+#ifndef DISPLAY_UPSIDE_DOWN
+#define DISPLAY_UPSIDE_DOWN 1  // the OLED is soldered in rotated 180 degrees
+#endif
 
 // ---------------------------------------------------------------------------
 // Pins (fixed wiring, see docs/WIRING.md). Do not change without re-wiring.
@@ -31,17 +34,20 @@
 #define PIN_I2C_SDA 6
 #define PIN_I2C_SCL 7
 
-#define PIN_BTN_A 1  // to GND, internal pull-up
+// Left to right on the case: A, B, C. All to GND, internal pull-ups.
+#define PIN_BTN_A 20  // was the red LED's pin (LED off the board for now); no deep-sleep wake
 #define PIN_BTN_B 3
-#define PIN_BTN_C 5
+#define PIN_BTN_C 1
 #define PIN_ACCEL_INT1 0     // LIS3DH INT1, same I2C bus as the OLED
-#define PIN_BATTERY_ADC 4    // 1M/1M divider + 100 nF, ADC1 channel 4
+#define PIN_BATTERY_ADC 4    // 1M/1M divider + 100 nF, ADC1 channel 4 (taken by the mic: see below)
 #define PIN_BUZZER 10        // passive buzzer, LEDC PWM; not a wake source
 // Buzzer's other leg: -1 = on GND (current wiring; loud enough per Sasha).
 // Set 21 and move the leg to GPIO21 for a bridge: the second pin is driven in
 // antiphase, doubling the voltage across the buzzer with no transistor.
 #define PIN_BUZZER_BRIDGE -1
-#define PIN_LED 20  // red LED: long leg (anode) here, short leg to GND, no resistor
+#define PIN_LED 20  // red LED (not fitted now: button A has the pin, FEATURE_LED 0)
+#define PIN_TOUCH 5  // TTP223 I/O (high while touched); internal pull-down when absent
+#define PIN_MIC 4    // MAX4466-type analog mic OUT, ADC1 channel 4 (biased at ~1.65 V)
 
 // ---------------------------------------------------------------------------
 // Feature flags. Display is always on. Buttons, LIS3DH and buzzer are fitted
@@ -57,7 +63,16 @@
 #define FEATURE_SOUND 1
 #endif
 #ifndef FEATURE_LED
-#define FEATURE_LED 1
+#define FEATURE_LED 0
+#endif
+// Touch pad and microphone: safe to leave on when not fitted. The touch pin
+// is pulled down (never touched); the mic is checked at boot and switched
+// off if the pin reads ~0 V instead of the mic's mid-rail bias.
+#ifndef FEATURE_TOUCH
+#define FEATURE_TOUCH 1
+#endif
+#ifndef FEATURE_MIC
+#define FEATURE_MIC 1
 #endif
 #ifndef FEATURE_BATTERY_ADC
 #define FEATURE_BATTERY_ADC 0
@@ -76,6 +91,46 @@
 // ---------------------------------------------------------------------------
 #define LED_DRIVE_CAP 0
 #define LED_MAX_PCT 60  // PWM duty at "full" brightness
+
+#if FEATURE_LED && FEATURE_BUTTONS && (PIN_LED == PIN_BTN_A || PIN_LED == PIN_BTN_C)
+#error "The LED and button C both on one pin: move one (docs/WIRING.md)"
+#endif
+#if FEATURE_MIC && FEATURE_BATTERY_ADC && PIN_MIC == PIN_BATTERY_ADC
+#error "the mic and the battery sense share GPIO4: move one (both need ADC1 = GPIO0-4)"
+#endif
+
+// ---------------------------------------------------------------------------
+// Touch pad (FEATURE_TOUCH): TTP223 on the head
+// ---------------------------------------------------------------------------
+// Short touch = TOUCH; held for BTN_LONG_MS = TOUCH_HOLD (petting), then
+// TOUCH_END on release; TOUCH_TICKLE_COUNT short touches within
+// TOUCH_TICKLE_MS = TICKLE.
+#define TOUCH_TICKLE_COUNT 3
+#define TOUCH_TICKLE_MS 1500
+#define TOUCH_PURR_EVERY_MS 1400  // while petted, it purrs this often
+
+// ---------------------------------------------------------------------------
+// Microphone (FEATURE_MIC). Levels are mean |sample - DC| over a 10 ms
+// block, in raw 12-bit ADC counts. PLACEHOLDERS until tuned on the bench:
+// mic.c logs every sound it hears (level, length, class) to tune from.
+// ---------------------------------------------------------------------------
+#define MIC_SAMPLE_HZ 8000
+#define MIC_BLOCK 80             // samples per block = 10 ms
+#define MIC_ABSENT_MAX 300       // boot: DC below this = no mic on the pin
+#define MIC_MIN_LEVEL 40         // never a sound below this, however quiet the room
+#define MIC_SNR 3                // ...nor below the noise floor times this
+#define MIC_END_GAP_MS 150       // a sound ends after this much quiet (gaps between words)
+#define MIC_CLAP_MAX_MS 120      // a clap is short...
+#define MIC_CLAP_LEVEL 250       // ...and sharp
+#define MIC_DOUBLE_MS 600        // second clap within this = DOUBLE_CLAP
+#define MIC_HEAR_MS 250          // a sound this long, not loud: a voice, it listens
+#define MIC_TALK_MAX_MS 6000     // longer than this is noise or music: ignored
+#define MIC_LOUD_LEVEL 500       // a long sound this loud is a shout
+#define MIC_CLIP_LO 60           // samples near the rails: overloaded mic
+#define MIC_CLIP_HI 4030
+#define MIC_BLOW_CLIP_PCT 30     // blocks this often overloaded = blowing on it
+#define MIC_ECHO_MS 250          // deaf while the buzzer plays, and this long after
+#define MIC_AFTER_BODY_MS 1000   // claps and bangs right after a tap, button or shake are those
 
 // ---------------------------------------------------------------------------
 // Buttons
@@ -100,11 +155,14 @@
 #define TAP_AFTER_BUTTON_MS 600
 
 // Shake: SHAKE_HITS samples whose |a| is more than SHAKE_DEV_MG away from 1 g,
-// all within SHAKE_WINDOW_MS. Taps and tilt are ignored for a while after.
+// all within SHAKE_WINDOW_MS. Taps and tilt are ignored for COOLDOWN after;
+// shaking on reports another SHAKE every REPEAT or so (~0.8 s), which is how
+// the face's anger climbs to a KO in 3-4 s of shaking.
 #define ACCEL_SHAKE_DEV_MG 900
 #define ACCEL_SHAKE_HITS 4
 #define ACCEL_SHAKE_WINDOW_MS 1000
 #define ACCEL_SHAKE_COOLDOWN_MS 1500
+#define ACCEL_SHAKE_REPEAT_MS 600
 // Any sample this far from 1 g keeps polling fast for a second, so a shake
 // that starts between two idle frames is still sampled at ~30 Hz.
 #define ACCEL_ACTIVE_DEV_MG 250

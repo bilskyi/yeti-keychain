@@ -37,6 +37,10 @@ set(KC_SRCS
     led/led.c
     pet/pet.c
     input/orient.c
+    input/touch_logic.c
+    input/touch.c
+    input/mic_logic.c
+    input/mic.c
     net/net.c)
 
 idf_component_register(SRCS ${KC_SRCS}

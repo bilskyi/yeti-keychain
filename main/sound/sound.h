@@ -27,7 +27,10 @@ void sound_set_muted(bool muted);
 bool sound_song(int i);  // false when muted or no such song
 void sound_stop(void);
 bool sound_song_playing(void);
-// Called (from the timer task) as each note of a song starts; for the LED.
+// Answering someone who talked: one chirp per syllable (1-9).
+void sound_babble(int syllables);
+bool sound_busy(void);  // anything playing: the mic is deaf meanwhile
+// Called (from the timer task) as each note of a song or babble starts; for the LED.
 void sound_set_note_hook(void (*hook)(uint16_t hz, uint16_t ms));
 #else
 static inline void sound_init(void) {}
@@ -39,5 +42,7 @@ static inline void sound_set_muted(bool muted) { (void)muted; }
 static inline bool sound_song(int i) { (void)i; return false; }
 static inline void sound_stop(void) {}
 static inline bool sound_song_playing(void) { return false; }
+static inline void sound_babble(int syllables) { (void)syllables; }
+static inline bool sound_busy(void) { return false; }
 static inline void sound_set_note_hook(void (*hook)(uint16_t hz, uint16_t ms)) { (void)hook; }
 #endif

@@ -47,6 +47,7 @@ bool input_busy(uint32_t now_ms);      // any source wants fast polling
 // still happens inside the wait; the pin's level wake brings the chip back.
 void input_wait(uint32_t timeout_ms);
 void input_kick_from_isr(void);  // IRAM-safe: end the current input_wait()
+void input_kick(void);           // the same from a task (the mic's)
 
 // Installs the shared GPIO ISR service and enables GPIO light-sleep wake-up.
 // Sources call it from init(); safe to call more than once.
@@ -65,6 +66,15 @@ bool input_accel_raw_mg(int mg[3]);
 // Board -> screen axes (input/orient.h); applied from the next sample.
 void input_accel_set_orient(const int8_t map[3]);
 
+// Microphone (input/mic.c). Listening keeps the chip out of light sleep, so
+// main.c turns it on only while awake. The deaf check (our buzzer is
+// playing) is called from the mic's task.
+void input_mic_listen(bool on);
+void input_mic_set_deaf_check(bool (*check)(void));
+int input_mic_syllables(void);  // in the last INPUT_TALK, 1-9
+
 // The sources (defined in their own files, only under their flags).
 extern const input_source_t input_source_buttons;
 extern const input_source_t input_source_accel;
+extern const input_source_t input_source_touch;
+extern const input_source_t input_source_mic;

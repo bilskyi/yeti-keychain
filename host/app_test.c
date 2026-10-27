@@ -657,7 +657,7 @@ static void test_story(void) {
     static story_t s;
     uint32_t now = 1000;
     story_init(&s, 5, now);
-    int alarms = 0, glitches = 0, songs = 0, last_song = -1;
+    int alarms = 0, glitches = 0, songs = 0, hangs = 0, last_song = -1;
     uint32_t last_event = 0;
     bool spaced = true;
     const char *first = NULL;
@@ -678,9 +678,11 @@ static void test_story(void) {
             songs++;
         }
         alarms += e == STORY_ALARM;
+        hangs += e == STORY_HANG;
     }
-    printf("  8 h: %d glitches, %d songs, %d alarms\n", glitches, songs, alarms);
+    printf("  8 h: %d glitches, %d songs, %d hangs, %d alarms\n", glitches, songs, hangs, alarms);
     assert(spaced && alarms == 0 && glitches >= 8 && glitches <= 35 && songs >= 5 && songs <= 20);
+    assert(hangs >= 6 && hangs <= 25);
     assert(strcmp(first, "YETI-7 ONLINE") == 0);  // the story starts at the start
 
     // Hungry: an alarm about 10 s later, again 20 min later, none once fed.

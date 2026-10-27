@@ -7,6 +7,8 @@
 #define FIRST_SONG_MS 6 * MIN_MS, 15 * MIN_MS
 #define GLITCH_MS 15 * MIN_MS, 45 * MIN_MS
 #define SONG_MS 25 * MIN_MS, 70 * MIN_MS
+#define FIRST_HANG_MS 2 * MIN_MS, 5 * MIN_MS
+#define HANG_MS 20 * MIN_MS, 50 * MIN_MS
 #define ALARM_DELAY_MS 10000             // a new need: alarm this soon
 #define ALARM_REPEAT_MS (20UL * MIN_MS)  // and again while it lasts
 
@@ -33,6 +35,7 @@ void story_init(story_t *s, uint32_t seed, uint32_t now) {
     rng_seed(&s->rng, seed);
     s->next_glitch = later(s, now, FIRST_GLITCH_MS);
     s->next_song = later(s, now, FIRST_SONG_MS);
+    s->next_hang = later(s, now, FIRST_HANG_MS);
     s->quiet_until = now;
     s->song = (int)rng_range(&s->rng, 0, SONG_COUNT - 1);
 }
@@ -59,6 +62,9 @@ story_event_t story_update(story_t *s, uint32_t now, uint8_t needs, bool idle, b
             ev = STORY_SONG;
             s->song = (s->song + 1 + (int)rng_range(&s->rng, 0, SONG_COUNT - 2)) % SONG_COUNT;
         }
+    } else if (due(now, s->next_hang)) {
+        ev = STORY_HANG;
+        s->next_hang = later(s, now, HANG_MS);
     } else if (due(now, s->next_glitch)) {
         ev = STORY_GLITCH;
         s->next_glitch = later(s, now, GLITCH_MS);

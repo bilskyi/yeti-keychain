@@ -157,6 +157,57 @@
   ~2400 lit px awake. Thought bubble and warning sign get a black outline
   where they overlap the right eye.
 
+- 2026-10-26 Face: the > < eyes dropped (Sasha didn't like them): laugh =
+  happy arches with quick hops, sneeze "choo" = eyes squeezed to bars.
+
+- 2026-10-26 **v0.6: touch pad + microphone (software; parts not fitted
+  yet).** Sasha picked a TTP223 and a mic. TTP223 on GPIO5 (button C was
+  never fitted; pull-down, so absent = never touched): pat = happy + boop,
+  hold = hearts + purring for as long as it lasts, 3 quick pats = tickle
+  (laugh). Mic (MAX4466-type, analog) on GPIO4 (ADC1, DMA at 8 kHz, own
+  task, `input/mic_logic.c` host-tested): clap = startled, clap-clap = it
+  sings a song (shake to stop), shout = scared, blowing = sneeze, talking =
+  it looks up and listens, then babbles back one chirp per syllable. It is
+  deaf while the buzzer plays; claps/bangs right after a tap, button or
+  shake are dropped (handling noise). Ears only while awake on the face:
+  the ADC's DMA keeps the chip out of light sleep. No mic on the pin
+  (reads ~0 V) = logged and switched off for good. Flashed with neither
+  part fitted: boot clean, `no mic on GPIO4`, no phantom touches.
+  Mic thresholds are PLACEHOLDERS until the bench (the log prints every
+  sound's length / level / overload / class).
+- 2026-10-26 — TTP223, mic and LED soldered; boot sees all three (mic bias
+  2233/4095). More reactions (host-tested, flashed, not yet tried by hand):
+  - Shaking builds anger (a SHAKE every ~0.8 s of shaking, KO in 3-4 s;
+    taps and tilt still wait 1.5 s): each shake within 5 s of the last goes one step
+    further: dizzy, grumbling, FURIOUS (slit eyes, teeth, steam, the screen
+    flashes), and at the 5th a KO. Then it sulks for 20 s, looking away;
+    three pats or one cuddle forgive it.
+  - Long petting is one sequence that fits the TTP223, which lets go by
+    itself ~7 s into a touch (bench, 2026-10-26): squished under the hand
+    (0-1.5 s after the hold), nuzzling with purr ripples and blush (to
+    3.2 s), melting with drops falling into a puddle (to 4.8 s), then heart
+    overload (hearts beating ever faster, buzzer and LED beat with them).
+    Letting go in the overload, which is when the chip gives up anyway,
+    plays the finale: a burst of hearts, a sparkle sound, an LED burst.
+    Let go sooner: a happy hop, or (melted) it snaps back into shape. A pad
+    that holds on gets the finale at 7.5 s, then content hearts.
+  - Hangs (story event, first 2-5 min after boot, then every 20-50 min):
+    "NOT RESPONDING", a stuck bar, everything else gets an error beep and B
+    is blocked. Three shakes (jolts move the bar) reboot it through a
+    "YETI-7 BIOS" screen; it reboots itself after 90 s.
+  - More animations (host-tested, previewed, flashed; not yet seen on the
+    panel): power-on (a line pinches into two bars that spring open into
+    eyes, a look around); idle fly (buzzes about, the eyes follow, lands on
+    the right eye, blinked off) and idle snow (looks up happily at falling
+    flakes, sometimes sneezes after), each ~4% of idle behaviours (~15-20
+    per 2 h); tickle = laugh with tears of joy, tickled again within 4 s =
+    rolls off the screen and back in; blowing = squinting into gusts, pushed
+    aside, then the sneeze; a mouth that moves while it babbles back; waking
+    = a big stretch (tall, squat, wobble).
+  - LED on everything: blinks for taps, claps, pats; giggle flashes; a slow
+    breath while petted (dimmer when dozing); fury flicker, KO fade, a stuck
+    flicker while hung, a boot ramp; a flash per chirp when it babbles back.
+
 ## In progress
 - Yeti: waiting for Sasha's review; then caliper measurements (boards,
   battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design
@@ -168,6 +219,9 @@
 - Phase 3 (case): only after hardware confirmation + caliper measurements.
 
 ## Open questions
+- Battery sense and the mic both want GPIO4 (ADC1 is GPIO0-4 only; GPIO2 is
+  strapping). When the battery goes in, something moves; to decide then
+  (GPIO21 is UART TX at boot, so not for an input like INT1).
 - Battery + power path + Rprog swap: **deferred by Sasha (2026-10-23)**, battery
   goes in last. Reminder before first charge: stock Rprog 1.2k is ~3x too much
   for 300 mAh; charge only supervised until swapped.

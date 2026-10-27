@@ -20,6 +20,7 @@ static input_event_t update_shake(motion_t *m, uint32_t now) {
     m->nhits = 0;
     m->quiet = true;
     m->quiet_until = now + ACCEL_SHAKE_COOLDOWN_MS;
+    m->shake_again = now + ACCEL_SHAKE_REPEAT_MS;
     m->candidate = m->tilt;  // a tilt seen mid-shake is not a tilt
     return INPUT_SHAKE;
 }
@@ -58,11 +59,14 @@ input_event_t motion_update(motion_t *m, int x_mg, int y_mg, int z_mg, uint32_t 
         m->active = true;
         m->active_until = now + 1000;
     }
-    if (before(now, m->quiet, m->quiet_until)) return INPUT_NONE;
-    m->quiet = false;
+    const bool quiet = before(now, m->quiet, m->quiet_until);
+    if (!quiet) m->quiet = false;
 
-    if (mag2 > hi * hi || mag2 < lo * lo) return update_shake(m, now);
-    if (moving) return INPUT_NONE;  // gravity is not a reliable level while moving
+    if (mag2 > hi * hi || mag2 < lo * lo) {
+        if (before(now, m->quiet, m->shake_again)) return INPUT_NONE;  // the same shake
+        return update_shake(m, now);
+    }
+    if (quiet || moving) return INPUT_NONE;  // gravity is not a reliable level while moving
 
     const int axis[3] = {x_mg, y_mg, z_mg};
     return update_tilt(m, ACCEL_TILT_SIGN * axis[ACCEL_TILT_AXIS], now);

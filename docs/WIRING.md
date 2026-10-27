@@ -51,9 +51,8 @@
 
 | From | To |
 |---|---|
-| Button A | **GPIO1** ↔ GND (no resistor: internal pull-up) |
-| Button B | **GPIO3** ↔ GND |
-| Button C | **GPIO5** ↔ GND |
+| Button A (left) | **GPIO20** ↔ GND (no resistor: internal pull-up; wakes from light sleep, not deep sleep) |
+| Button B (middle) | **GPIO3** ↔ GND |
 | LIS3DH VIN (or VCC) | **3V3** |
 | LIS3DH GND | GND |
 | LIS3DH SDA / SCL | **GPIO6 / GPIO7** (same wires as the OLED) |
@@ -61,19 +60,32 @@
 | LIS3DH SDO, CS | leave unconnected (breakout straps them; address 0x18 or 0x19, both probed) |
 | Buzzer + | **GPIO10** |
 | Buzzer − | **GND** (or GPIO21 with `PIN_BUZZER_BRIDGE 21`: bridge, louder) |
-| Red LED, long leg (+, anode) | **GPIO20** (no resistor: the pin runs at its weakest drive, `LED_DRIVE_CAP 0`) |
-| Red LED, short leg (−, cathode, flat side) | **GND** |
+| Button C (right) | **GPIO1** ↔ GND (no resistor: internal pull-up) |
+| ~~Red LED~~ | removed for now (2026-10-27): GPIO20 went to button A. To bring it back it needs another pin, then `FEATURE_LED 1` |
+| TTP223 touch pad VCC / GND | **3V3** / GND |
+| TTP223 I/O | **GPIO5** (no resistor; leave its A/B jumpers open: high while touched) |
+| Mic module (MAX4466) VCC / GND | **3V3** / GND (not 5 V: its output must stay under 3.3 V) |
+| Mic module OUT | **GPIO4** (ADC; sits at ~1.65 V when quiet) |
+
+Touch pad: keep your finger off it while powering on (it calibrates then).
+Behind the case wall it works through ~2 mm of plastic. Mic: the gain pot
+on the back, start at the middle; too high and talking reads as blowing
+(the log's `heard ... overload` %). Point the mic at a hole in the case.
+Both are optional: with nothing on GPIO5 it never feels a touch, and with
+nothing on GPIO4 the firmware logs `no mic` and keeps its ears off.
 
 ```
                  ESP32-C3 Super Mini
              ┌─────────────────────────┐
   OLED VCC ──┤ 3V3                GPIO0├── LIS3DH INT1
-  LIS3DH VIN─┤ 3V3                GPIO1├── [A] ── GND
+  LIS3DH VIN─┤ 3V3                GPIO1├── [C] ── GND
              │                    GPIO3├── [B] ── GND
-  all GNDs ──┤ GND                GPIO5├── [C] ── GND
+  all GNDs ──┤ GND                GPIO4├── mic OUT
+             │                    GPIO5├── TTP223 I/O
              │                    GPIO6├── SDA: OLED + LIS3DH
              │                    GPIO7├── SCL: OLED + LIS3DH
              │                   GPIO10├── buzzer driver
+             │                   GPIO20├── [A] ── GND
              │ 5V (USB / later LiPo)    │
              └─────────────────────────┘
 ```
@@ -112,15 +124,17 @@ GPIO, so it goes through a transistor):
 
 | Function | Pin | Notes |
 |---|---|---|
-| Battery sense | GPIO4 (ADC1_CH4) | 100 kΩ / 100 kΩ divider (1 MΩ / 1 MΩ also works) from battery+ (TP4056 OUT+ side of the switch) to GND, 100 nF from GPIO4 to GND |
+| Battery sense | needs an ADC1 pin (GPIO0-4); GPIO4 now has the mic, so one of them moves when the battery goes in | 100 kΩ / 100 kΩ divider (1 MΩ / 1 MΩ also works) from battery+ (TP4056 OUT+ side of the switch) to GND, 100 nF from GPIO4 to GND |
 
 ## Pins to avoid
 
 - **GPIO2, GPIO8, GPIO9**: strapping pins. GPIO8 also drives the onboard LED.
 - **GPIO18/19**: the native USB D−/D+.
-- GPIO20 is UART0 RX: free here, since the console is the native USB.
+- GPIO20 is UART0 RX: free here, since the console is the native USB. GPIO21
+  is UART0 TX: the ROM drives it at boot, so only an output belongs there.
 - Only **GPIO0–5** can wake the C3 from deep sleep, so every wake source
-  (buttons, LIS3DH INT1) must sit on those pins. The plan above already does.
+  (buttons, LIS3DH INT1) must sit on those pins. Button A on GPIO20 is the
+  exception: it wakes from light sleep only, and B or C wakes from deep sleep.
   The buzzer is output-only, so it takes GPIO10.
 
 ## Notes / unverified

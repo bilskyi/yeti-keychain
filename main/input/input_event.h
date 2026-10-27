@@ -18,6 +18,20 @@ typedef enum {
     INPUT_TILT_LEFT,
     INPUT_TILT_RIGHT,
 
+    // Touch pad on the head (FEATURE_TOUCH)
+    INPUT_TOUCH,       // a short touch
+    INPUT_TOUCH_HOLD,  // held: fires once, while still touching (petting)
+    INPUT_TOUCH_END,   // let go after a HOLD
+    INPUT_TICKLE,      // several quick touches in a row
+
+    // Microphone (FEATURE_MIC)
+    INPUT_CLAP,
+    INPUT_DOUBLE_CLAP,
+    INPUT_LOUD,  // a shout, a long bang
+    INPUT_BLOW,  // blowing on the mic
+    INPUT_HEAR,  // someone started talking: it listens
+    INPUT_TALK,  // ...and stopped (input_mic_syllables() says how much they said)
+
     // Buttons (FEATURE_BUTTONS)
     INPUT_BTN_A_SHORT,
     INPUT_BTN_A_LONG,

@@ -5,7 +5,8 @@
 //     and again every so often while the need lasts;
 //   - glitches now and then: the screen tears, it chirps garbage and shows a
 //     fragment of its log ("SIGNAL LOST", "CORE TEMP LOW"...);
-//   - bursts into song at random; shake it to make it stop.
+//   - bursts into song at random; shake it to make it stop;
+//   - hangs now and then ("NOT RESPONDING"): shake it to bring it back.
 //
 // Pure C (host-tested). main.c does the sound, LED and face for each event.
 
@@ -21,11 +22,12 @@ typedef enum {
     STORY_ALARM,
     STORY_GLITCH,
     STORY_SONG,
+    STORY_HANG,
 } story_event_t;
 
 typedef struct {
     rng_t rng;
-    uint32_t next_glitch, next_song, next_alarm;
+    uint32_t next_glitch, next_song, next_alarm, next_hang;
     bool alarm_due;        // a need is waiting to be announced
     uint32_t quiet_until;  // events are spaced at least STORY_GAP_MS apart
     uint8_t needs;         // as of the last update

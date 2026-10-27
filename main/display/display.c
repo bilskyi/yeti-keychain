@@ -45,8 +45,13 @@ static const uint8_t INIT[] = {
     0xDB, 0x20,  // VCOM deselect: reset default
     0x2E,        // scrolling off
 #endif
+#if DISPLAY_UPSIDE_DOWN
+    0xA0,        // segment remap off and COM scan normal:
+    0xC0,        // the module is mounted rotated 180 degrees
+#else
     0xA1,        // segment remap: mirror horizontally
     0xC8,        // COM scan reversed: mirror vertically (together: not upside down)
+#endif
     0xDA, 0x12,  // COM pins: alternate, as every 128x64 module wires them
     0xD9, 0x22,  // pre-charge: reset default. Lower = dimmer, less current.
     0xA4,        // show RAM (not all-on)

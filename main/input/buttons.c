@@ -1,4 +1,4 @@
-// Buttons A/B/C on GPIO1/3/5 (to GND, internal pull-ups).
+// Buttons A/B/C on GPIO20/3/1 (to GND, internal pull-ups; C only if PIN_BTN_C >= 0).
 //
 // Each pin has a low-level interrupt that is also its light-sleep wake-up.
 // The ISR only masks its own pin and kicks the main loop; poll() then samples
@@ -7,8 +7,8 @@
 // unmasked again. A level interrupt rather than an edge, because only level
 // works as a GPIO wake-up from light sleep.
 //
-// Deep sleep: button A wakes the chip (GPIO0-5 are the C3's deep-sleep wake
-// pins; IDF keeps the pull-up on during deep sleep for a LOW wake pin).
+// Deep sleep: any button on GPIO0-5 wakes the chip (the C3's only deep-sleep
+// wake pins, so not A on GPIO20; IDF keeps the pull-up on for a LOW wake pin).
 
 #include "config.h"
 
@@ -29,7 +29,9 @@ static const struct {
 } BUTTONS[] = {
     {PIN_BTN_A, INPUT_BTN_A_PRESS, INPUT_BTN_A_SHORT, INPUT_BTN_A_LONG},
     {PIN_BTN_B, INPUT_BTN_B_PRESS, INPUT_BTN_B_SHORT, INPUT_BTN_B_LONG},
+#if PIN_BTN_C >= 0
     {PIN_BTN_C, INPUT_BTN_C_PRESS, INPUT_BTN_C_SHORT, INPUT_BTN_C_LONG},
+#endif
 };
 #define NBUTTONS ((int)(sizeof(BUTTONS) / sizeof(BUTTONS[0])))
 
@@ -98,7 +100,11 @@ static bool busy(uint32_t now_ms) {
 
 static void arm_wakeup(void) {
     if (!s_ready) return;
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << PIN_BTN_A, ESP_GPIO_WAKEUP_GPIO_LOW);
+    uint64_t mask = 0;
+    for (int i = 0; i < NBUTTONS; i++) {
+        if (BUTTONS[i].pin <= 5) mask |= 1ULL << BUTTONS[i].pin;
+    }
+    if (mask) esp_deep_sleep_enable_gpio_wakeup(mask, ESP_GPIO_WAKEUP_GPIO_LOW);
 }
 
 const input_source_t input_source_buttons = {

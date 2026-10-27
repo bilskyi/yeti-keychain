@@ -577,6 +577,12 @@ void app_face_event(app_t *a, input_event_t ev) {
         case INPUT_TAP: pet_play(&a->save.pet, 1, 0); break;
         case INPUT_DOUBLE_TAP: pet_play(&a->save.pet, 3, 0); break;
         case INPUT_SHAKE: pet_play(&a->save.pet, -2, 1); break;  // it didn't enjoy that
+        case INPUT_TOUCH: pet_play(&a->save.pet, 2, 0); break;
+        case INPUT_TOUCH_HOLD: pet_play(&a->save.pet, 4, 0); break;  // a proper cuddle
+        case INPUT_TICKLE: pet_play(&a->save.pet, 3, 0); break;
+        case INPUT_TALK: pet_play(&a->save.pet, 2, 0); break;  // someone talked to it
+        case INPUT_DOUBLE_CLAP: pet_play(&a->save.pet, 2, 0); break;
+        case INPUT_LOUD: pet_play(&a->save.pet, -2, 0); break;
         default: break;
     }
 }

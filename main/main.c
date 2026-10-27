@@ -1,4 +1,4 @@
-// OLED keychain companion, v0.5.
+// OLED keychain companion, v0.6.
 //
 // Boot, then one loop: input -> policy -> pet -> face -> render -> flush -> sleep.
 // The loop blocks in input_wait() between frames, which is when the C3 drops
@@ -26,6 +26,7 @@
 #include "app/app.h"
 #include "led/led.h"
 #include "pet/story.h"
+#include "sound/rtttl.h"
 #include "storage/storage.h"
 
 static const char *TAG = "main";
@@ -38,6 +39,8 @@ static app_t s_app;
 static app_save_t s_save;
 static story_t s_story;
 static bool s_singing;  // a story song is playing; shake (or any input) stops it
+static bool s_petted;   // the touch pad is held: it purrs
+static uint32_t s_next_purr;
 
 void app_main(void);
 
@@ -100,7 +103,7 @@ static const app_env_t ENV = {
     .song_playing = sound_song_playing,
 };
 
-// Each note of a song flashes the LED for half its length.
+// Each note of a song (or of its babbled answer) flashes the LED for half its length.
 static void note_flash(uint16_t hz, uint16_t ms) {
     if (hz) led_flash(ms / 2);
 }
@@ -109,8 +112,10 @@ static void note_flash(uint16_t hz, uint16_t ms) {
 // dizzy and offended); anything else gets a disappointed look. True when the
 // event was used up stopping it.
 static bool stop_song(input_event_t ev, uint32_t now) {
+    // Pats, cuddles and the mic (deaf while singing anyway) don't stop it.
     if (!s_singing || ev == INPUT_BTN_A_PRESS || ev == INPUT_BTN_B_PRESS ||
-        ev == INPUT_BTN_C_PRESS || ev == INPUT_TILT_LEFT || ev == INPUT_TILT_RIGHT) {
+        ev == INPUT_BTN_C_PRESS || ev == INPUT_TILT_LEFT || ev == INPUT_TILT_RIGHT ||
+        (ev >= INPUT_TOUCH && ev <= INPUT_TALK)) {
         return false;
     }
     s_singing = false;
@@ -130,13 +135,57 @@ static bool oriented(void) {
     return s_app.save.orient[0] || s_app.save.orient[1] || s_app.save.orient[2];
 }
 
-// The face asked for a sound (picked up, upside down, a sneeze...).
+// The face asked for a sound and a light (picked up, upside down, a sneeze,
+// shaken too much, petted for long, hung...).
 static void play_cue(face_cue_t cue) {
-    static const app_sound_t CUES[] = {
-        [CUE_HI] = SND_HI,         [CUE_SCARED] = SND_SCARED, [CUE_RELIEF] = SND_DING,
-        [CUE_WHEE] = SND_WHEE,     [CUE_SNEEZE] = SND_SNEEZE, [CUE_HUM] = SND_HUM,
+    static const struct {
+        int8_t snd, led;  // -1: none
+    } CUES[] = {
+        [CUE_NONE] = {-1, -1},
+        [CUE_HI] = {SND_HI, LED_DOUBLE},
+        [CUE_SCARED] = {SND_SCARED, LED_SCARED},
+        [CUE_RELIEF] = {SND_DING, LED_BLINK},
+        [CUE_WHEE] = {SND_WHEE, LED_GIGGLE},
+        [CUE_SNEEZE] = {SND_SNEEZE, LED_SNEEZE},
+        [CUE_HUM] = {SND_HUM, -1},
+        [CUE_GRUMBLE] = {SND_GROWL, LED_DOUBLE},
+        [CUE_FURY] = {SND_FURY, LED_FURY},
+        [CUE_KO] = {SND_KO, LED_KO},
+        [CUE_HMPH] = {SND_HMPH, LED_BLINK},
+        [CUE_FORGIVEN] = {SND_AWW, LED_DOUBLE},
+        [CUE_BLISS] = {-1, LED_BREATHE},
+        [CUE_MELT] = {SND_SIGH, LED_DOZE},
+        [CUE_OVERLOAD] = {-1, -1},  // the heartbeat below
+        [CUE_HEARTS] = {SND_SPARKLE, LED_BURST},
+        [CUE_BUZZ] = {SND_BUZZ, -1},
+        [CUE_SNOW] = {SND_TWINKLE, LED_TWINKLE},
+        [CUE_ROFL] = {SND_ROFL, LED_GIGGLE},
+        [CUE_WIND] = {SND_WIND, LED_SCARED},
+        [CUE_STRETCH] = {SND_STRETCH, LED_RISE},
+        [CUE_JOLT] = {SND_ZAP, LED_BLINK},
+        [CUE_ERROR] = {SND_ERROR, LED_DOUBLE},
+        [CUE_REBOOT] = {SND_POWERDOWN, LED_BOOT},
+        [CUE_BOOTED] = {SND_BOOT, LED_GIGGLE},
     };
-    if (cue != CUE_NONE && (unsigned)cue < sizeof(CUES) / sizeof(CUES[0])) sound_fx(CUES[cue]);
+    if (cue == CUE_NONE || (unsigned)cue >= sizeof(CUES) / sizeof(CUES[0])) return;
+    if (CUES[cue].snd >= 0) sound_fx((app_sound_t)CUES[cue].snd);
+    if (CUES[cue].led >= 0) led_pattern((led_pattern_t)CUES[cue].led);
+}
+
+// A blink for the small things; the big moments come as face cues.
+static void led_on_event(input_event_t ev) {
+    switch (ev) {
+        case INPUT_TAP:
+        case INPUT_CLAP:
+        case INPUT_SHAKE:  // a second shake in a row gets the face's cue instead
+        case INPUT_TOUCH_END: led_pattern(LED_BLINK); break;
+        case INPUT_DOUBLE_TAP: led_pattern(LED_DOUBLE); break;
+        case INPUT_TICKLE: led_pattern(LED_GIGGLE); break;
+        case INPUT_TOUCH:
+        case INPUT_BTN_A_SHORT: led_flash(40); break;
+        case INPUT_TOUCH_HOLD: led_pattern(LED_BREATHE); break;
+        default: break;
+    }
 }
 
 static void on_input(input_event_t ev, uint32_t now, void *ctx) {
@@ -147,6 +196,11 @@ static void on_input(input_event_t ev, uint32_t now, void *ctx) {
         return;
     }
     policy_on_event(&s_policy, ev, now_ms64());
+    if (face_hung(&s_face)) {  // frozen: only the face listens (a shake fixes it)
+        if (ev == INPUT_TOUCH_END) s_petted = false;
+        face_on_event(&s_face, ev, now);
+        return;
+    }
     if (stop_song(ev, now)) return;
     if (s_face.fx == FX_ALARM) {  // seen it: hush the siren
         led_pattern(LED_OFF);
@@ -156,9 +210,37 @@ static void on_input(input_event_t ev, uint32_t now, void *ctx) {
         app_open(&s_app, now);
         return;
     }
+    // Taps while laughing: giggles, never cutting off the one playing.
+    const bool giggling = face_laughing(&s_face) && (ev == INPUT_TOUCH || ev == INPUT_TICKLE);
     face_on_event(&s_face, ev, now);
     app_face_event(&s_app, ev);
-    sound_on_event(ev);
+    if (!giggling) {
+        sound_on_event(ev);
+    } else if (!sound_busy()) {
+        sound_on_event(INPUT_TICKLE);
+    }
+    led_on_event(ev);
+    switch (ev) {
+        case INPUT_TOUCH_HOLD:
+            s_petted = true;
+            s_next_purr = now + TOUCH_PURR_EVERY_MS;
+            break;
+        case INPUT_TOUCH_END:
+            s_petted = false;
+            break;
+        case INPUT_TALK:
+            sound_babble(input_mic_syllables());
+            face_talk(&s_face, input_mic_syllables(), now);
+            break;
+        case INPUT_DOUBLE_CLAP:  // clap-clap: it sings
+            if (!s_singing && sound_song((int)(esp_random() % (uint32_t)songs_count()))) {
+                s_singing = true;
+                face_fx(&s_face, FX_SING, NULL, now, 0);
+            }
+            break;
+        default:
+            break;
+    }
 }
 
 // The pet's own events (pet/story.h), when nothing else is going on.
@@ -169,7 +251,8 @@ static void run_story(uint32_t now) {
         face_react(&s_face, EXPR_EXCITED, now, 3000);
         led_pattern(LED_BLINK);
     }
-    const bool idle = !app_active(&s_app) && !s_policy.night && !s_singing && s_face.fx == FX_NONE;
+    const bool idle = !app_active(&s_app) && !s_policy.night && !s_singing && !s_petted &&
+                      s_face.fx == FX_NONE;
     switch (story_update(&s_story, now, app_needs(&s_app), idle, !s_app.save.muted)) {
         case STORY_ALARM:
             ESP_LOGI(TAG, "story: alarm (needs 0x%x)", app_needs(&s_app));
@@ -185,6 +268,12 @@ static void run_story(uint32_t now) {
             face_fx(&s_face, FX_GLITCH, line, now, 1800);
             break;
         }
+        case STORY_HANG:  // frozen until shaken
+            ESP_LOGI(TAG, "story: hang");
+            sound_fx(SND_GLITCH);
+            led_pattern(LED_STUCK);
+            face_hang(&s_face, now);
+            break;
         case STORY_SONG:
             if (sound_song(story_song(&s_story))) {
                 s_singing = true;
@@ -212,20 +301,23 @@ void app_main(void) {
     led_init();
     sound_set_note_hook(note_flash);
     input_init();
+    input_mic_set_deaf_check(sound_busy);
     input_accel_set_orient(s_save.orient);
     input_subscribe(on_input, NULL);
     net_init();
 
     uint32_t now = (uint32_t)now_ms64();
     face_init(&s_face, esp_random(), now);
+    face_boot(&s_face, now);
+    led_pattern(LED_RISE);
     policy_init(&s_policy);
     app_init(&s_app, &ENV, &s_save, esp_random());
     story_init(&s_story, esp_random(), now);
     uint64_t next_battery = now_ms64() + BATTERY_SAMPLE_MS;
 
-    ESP_LOGI(TAG, "v0.5 running; buttons=%d accel=%d sound=%d led=%d battery_adc=%d wifi=%d ble=%d",
-             FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_SOUND, FEATURE_LED, FEATURE_BATTERY_ADC,
-             FEATURE_WIFI, FEATURE_BLE);
+    ESP_LOGI(TAG, "v0.6 running; buttons=%d accel=%d sound=%d led=%d touch=%d mic=%d battery_adc=%d wifi=%d ble=%d",
+             FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_SOUND, FEATURE_LED, FEATURE_TOUCH, FEATURE_MIC,
+             FEATURE_BATTERY_ADC, FEATURE_WIFI, FEATURE_BLE);
     sound_hello();
 
     for (;;) {
@@ -263,6 +355,30 @@ void app_main(void) {
         }
 
         if (s_singing && app_active(&s_app)) stop_song(INPUT_NONE, now);
+        // Ears on while awake on the face (the mic's ADC keeps the chip out of light sleep).
+        input_mic_listen(!s_policy.night && !app_active(&s_app));
+        const int stage = s_face.petting ? s_face.pet_stage : -1;
+        const uint32_t beat = face_heartbeat_ms(&s_face);
+        if (beat && (int32_t)(s_next_purr - now) > (int32_t)beat) s_next_purr = now;  // starts at once
+        if (s_petted && !s_singing && (int32_t)(now - s_next_purr) >= 0) {
+            if (beat) {  // heart overload: a heartbeat, ever faster, the LED with it
+                s_next_purr = now + beat;
+                sound_fx(SND_HEARTBEAT);
+                led_pattern(LED_BEAT);
+            } else {  // a purr; slower while melting
+                s_next_purr = now + TOUCH_PURR_EVERY_MS * (stage == 2 ? 2 : 1);
+                sound_fx(SND_PURR);
+            }
+        }
+        // Loops a blink cut short come back: breathing while petted, the stuck
+        // flicker while hung.
+        if (!led_busy()) {
+            if (s_face.fx == FX_HANG) {
+                led_pattern(LED_STUCK);
+            } else if (s_petted && stage != 3 && s_face.fx != FX_HEARTS) {
+                led_pattern(stage == 2 ? LED_DOZE : LED_BREATHE);
+            }
+        }
         run_story(now);
 
         int mg[3];

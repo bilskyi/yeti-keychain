@@ -89,5 +89,93 @@ int main(int argc, char **argv) {
     const battery_status_t b = {BATTERY_OK, 3800, 55};
     hud_battery(&g, &b, 0);
     write_pbm(dir, idx++, "shifted_with_battery", &g);
+
+    // Petting melted, fury with three puffs, a hang (frozen, then the hint),
+    // and the reboot's two screens.
+    // The newer animations, one frame each.
+    settle(&f, EXPR_NEUTRAL, &now);
+    face_boot(&f, now);
+    f.now = now + 150;
+    SNAP("boot_line");
+    f.now = now + 380;
+    SNAP("boot_pinch");
+    f.now = now + 600;
+    SNAP("boot_open");
+    f.fx = FX_NONE;
+    settle(&f, EXPR_NEUTRAL, &now);
+    face_start_idle(&f, IDLE_FLY, now);
+    f.now = now + 1200;
+    f.look_x = 8;
+    SNAP("fly_about");
+    f.now = now + 4000;
+    f.look_x = 6;
+    f.look_y = -3;
+    SNAP("fly_landed");
+    f.look_x = f.look_y = 0;
+    settle(&f, EXPR_HAPPY, &now);
+    face_start_idle(&f, IDLE_SNOW, now);
+    f.now = now + 3000;
+    f.look_y = -3;
+    SNAP("snow");
+    f.look_y = 0;
+    settle(&f, EXPR_NEUTRAL, &now);
+    face_start_idle(&f, IDLE_BLOWN, now);
+    f.now = now + 600;
+    f.look_x = 12;
+    SNAP("wind");
+    f.look_x = 0;
+    f.idle = IDLE_NONE;
+    settle(&f, EXPR_LAUGH, &now);
+    f.expr_since = now - 300;
+    f.now = now;
+    SNAP("laugh_tears");
+    face_fx(&f, FX_ROLL, NULL, now, 1800);
+    f.now = now + 500;
+    SNAP("rofl");
+    f.fx = FX_NONE;
+    settle(&f, EXPR_HAPPY, &now);
+    face_talk(&f, 3, now);
+    f.now = now + 40;
+    SNAP("talking");
+    f.talk_until = now;
+    face_start_idle(&f, IDLE_STRETCH, now);
+    f.now = now + 850;
+    SNAP("stretch_tall");
+    f.now = now + 1150;
+    SNAP("stretch_squat");
+    f.idle = IDLE_NONE;
+
+    // Petting: one frame of each stage, then the finale's burst.
+    settle(&f, EXPR_BLISS, &now);
+    f.petting = true;
+    static const struct {
+        uint32_t at;
+        const char *name;
+    } PET[] = {{150, "pet_squish"}, {2000, "pet_nuzzle"}, {4500, "pet_melt"}, {5600, "pet_hearts"}};
+    for (int k = 0; k < 4; k++) {
+        f.pet_since = f.now - PET[k].at;
+        SNAP(PET[k].name);
+    }
+    f.petting = false;
+    face_fx(&f, FX_HEARTS, NULL, f.now, 1800);
+    f.now += 700;
+    f.expr = EXPR_LOVE;
+    SNAP("pet_finale");
+    f.fx = FX_NONE;
+    settle(&f, EXPR_FURIOUS, &now);
+    f.rage = 4;
+    SNAP("furious_boiling");
+    face_hang(&f, now);
+    f.now = now + 1000;
+    SNAP("hang");
+    f.now = now + 6700;
+    SNAP("hang_shake_me");
+    face_on_event(&f, INPUT_SHAKE, now);
+    face_on_event(&f, INPUT_SHAKE, now);
+    face_on_event(&f, INPUT_SHAKE, now);
+    f.now = f.fx_since + 1200;
+    SNAP("reboot_bios");
+    f.now = f.fx_since + 2400;
+    SNAP("reboot_ok");
     return 0;
 }

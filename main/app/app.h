@@ -54,6 +54,23 @@ typedef enum {
     SND_ALARM,   // siren: it needs something
     SND_GLITCH,  // garbled chirps
     SND_HMPH,    // offended (shaken quiet mid-song)
+    SND_PURR,    // petted (repeats while the touch is held)
+    SND_GROWL,   // shaken twice: getting cross
+    SND_FURY,    // shaken on and on: furious
+    SND_KO,      // bonk, and down it goes
+    SND_AWW,     // forgiven
+    SND_SIGH,    // melting under the petting
+    SND_ZAP,     // shaken while hung: a jolt
+    SND_ERROR,   // anything else while hung
+    SND_POWERDOWN,  // shaken free: powering down...
+    SND_BOOT,       // ...and back up
+    SND_HEARTBEAT,  // petting's heart overload: ba-dum
+    SND_SPARKLE,    // petting's finale
+    SND_BUZZ,       // a fly
+    SND_TWINKLE,    // snow
+    SND_ROFL,       // rolling with laughter
+    SND_WIND,       // blown on: a whoosh
+    SND_STRETCH,    // waking up: mmmm-ah
     SND_COUNT
 } app_sound_t;
 

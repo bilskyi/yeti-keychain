@@ -22,6 +22,12 @@ static const input_source_t *const SOURCES[] = {
 #if FEATURE_ACCEL
     &input_source_accel,
 #endif
+#if FEATURE_TOUCH
+    &input_source_touch,
+#endif
+#if FEATURE_MIC
+    &input_source_mic,
+#endif
     NULL,  // keeps the array non-empty when every flag is off
 };
 #define SOURCE_COUNT ((int)(sizeof(SOURCES) / sizeof(SOURCES[0])) - 1)
@@ -31,6 +37,8 @@ static SemaphoreHandle_t s_kick;
 static bool s_gpio_isr_ready;
 static uint32_t s_last_button;  // time of the last button event
 static bool s_button_seen;
+static uint32_t s_last_body;  // ...of the last button, tap or shake
+static bool s_body_seen;
 static struct {
     input_handler_t fn;
     void *ctx;
@@ -78,6 +86,10 @@ void IRAM_ATTR input_kick_from_isr(void) {
     if (woken) portYIELD_FROM_ISR();
 }
 
+void input_kick(void) {
+    if (s_kick) xSemaphoreGive(s_kick);
+}
+
 void input_wait(uint32_t timeout_ms) {
     const TickType_t ticks = pdMS_TO_TICKS(timeout_ms) ? pdMS_TO_TICKS(timeout_ms) : 1;
     if (s_kick) {
@@ -118,6 +130,19 @@ static bool tap_from_button(input_event_t ev, uint32_t now_ms) {
     return s_button_seen && (int32_t)(now_ms - s_last_button) < TAP_AFTER_BUTTON_MS;
 }
 
+// A clap or a bang the mic heard that is really the board being handled:
+// pressed, tapped, shaken or moving. Voices still count.
+static bool sound_from_body(input_event_t ev, uint32_t now_ms) {
+    if (ev != INPUT_CLAP && ev != INPUT_DOUBLE_CLAP && ev != INPUT_LOUD && ev != INPUT_BLOW) return false;
+#if FEATURE_BUTTONS
+    if (input_source_buttons.busy(now_ms)) return true;
+#endif
+#if FEATURE_ACCEL
+    if (input_source_accel.busy(now_ms)) return true;
+#endif
+    return s_body_seen && (int32_t)(now_ms - s_last_body) < MIC_AFTER_BODY_MS;
+}
+
 void input_dispatch(uint32_t now_ms) {
     if (!s_queue) return;
     input_event_t ev;
@@ -129,6 +154,14 @@ void input_dispatch(uint32_t now_ms) {
         if (tap_from_button(ev, now_ms)) {
             ESP_LOGI(TAG, "event %s ignored (button press)", input_event_name(ev));
             continue;
+        }
+        if (sound_from_body(ev, now_ms)) {
+            ESP_LOGI(TAG, "event %s ignored (handling noise)", input_event_name(ev));
+            continue;
+        }
+        if (is_button(ev) || ev == INPUT_TAP || ev == INPUT_DOUBLE_TAP || ev == INPUT_SHAKE) {
+            s_last_body = now_ms;
+            s_body_seen = true;
         }
         // PRESS precedes every SHORT/LONG: logging it too would double the noise.
         if (ev < INPUT_BTN_A_PRESS) ESP_LOGI(TAG, "event %s", input_event_name(ev));

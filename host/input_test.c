@@ -1,5 +1,6 @@
 // Host unit tests for the input logic: button debounce / short / long, and
-// shake / tilt from accelerometer samples, tap / double tap from click flags.
+// shake / tilt from accelerometer samples, tap / double tap from click flags,
+// touch pad gestures, and what the microphone hears.
 
 #include <assert.h>
 #include <stdint.h>
@@ -8,6 +9,8 @@
 #include "config.h"
 #include "input/button_logic.h"
 #include "input/motion_logic.h"
+#include "input/mic_logic.h"
+#include "input/touch_logic.h"
 
 #define FRAME 33
 
@@ -111,6 +114,17 @@ static void test_motion_shake(void) {
     feed(&m, 0, 0, 1000, ACCEL_SHAKE_COOLDOWN_MS + 1100, &now, INPUT_NONE);
     assert(motion_tap_allowed(&m, now));
     assert(!motion_busy(&m, now));
+
+    // Shaking on and on: another SHAKE every ~0.8 s, so 4 s make about five.
+    motion_init(&m);
+    shakes = 0;
+    for (int i = 0; i < 4000 / FRAME; i++) {
+        const int x = (i % 2) ? 2500 : -1500;
+        shakes += motion_update(&m, x, 0, 1000, now += FRAME) == INPUT_SHAKE;
+    }
+    printf("  shakes in 4 s of shaking: %d\n", shakes);
+    assert(shakes >= 4 && shakes <= 6);
+    assert(!motion_tap_allowed(&m, now));
 
     // A single bump (a tap) is not a shake, and the tap itself still counts.
     motion_init(&m);
@@ -225,8 +239,215 @@ static void test_taps(void) {
     assert(idle(&m, 700, &now, INPUT_TAP) == 0);
 }
 
+// Holds the pad touched (or not) for ms, sampling every FRAME; counts ev.
+static int touch_for(touch_t *t, bool on, uint32_t ms, uint32_t *now, input_event_t ev, int *other) {
+    int n = 0;
+    for (uint32_t s = 0; s < ms; s += FRAME) {
+        const input_event_t e = touch_update(t, on, *now += FRAME);
+        if (e == ev) {
+            n++;
+        } else if (e != INPUT_NONE) {
+            (*other)++;
+        }
+    }
+    return n;
+}
+
+static void test_touch(void) {
+    touch_t t;
+    uint32_t now = 1000;
+    int other = 0;
+    touch_init(&t);
+    assert(!touch_busy(&t));
+
+    // A pat: one TOUCH on release.
+    assert(touch_for(&t, true, 200, &now, INPUT_TOUCH, &other) == 0);
+    assert(touch_busy(&t));
+    assert(touch_for(&t, false, 300, &now, INPUT_TOUCH, &other) == 1 && other == 0);
+    assert(!touch_busy(&t));
+
+    // Petting: HOLD while still held, nothing more while held, END on release.
+    now += 3000;
+    assert(touch_for(&t, true, 3000, &now, INPUT_TOUCH_HOLD, &other) == 1 && other == 0);
+    assert(touch_busy(&t));
+    assert(touch_for(&t, false, 300, &now, INPUT_TOUCH_END, &other) == 1 && other == 0);
+    assert(!touch_busy(&t));
+
+    // Three quick pats: TOUCH, TOUCH, TICKLE.
+    now += 3000;
+    int touches = 0, tickles = 0;
+    for (int i = 0; i < 3; i++) {
+        touch_for(&t, true, 120, &now, INPUT_NONE, &other);
+        touches += touch_for(&t, false, 200, &now, INPUT_TOUCH, &tickles);
+    }
+    assert(touches == 2 && tickles == 1);
+    other = 0;
+
+    // Three slow pats: three TOUCHes, no tickle.
+    now += 3000;
+    touches = 0;
+    for (int i = 0; i < 3; i++) {
+        touch_for(&t, true, 120, &now, INPUT_NONE, &other);
+        touches += touch_for(&t, false, 900, &now, INPUT_TOUCH, &other);
+    }
+    assert(touches == 3 && other == 0);
+
+    // A 10 ms glitch is not a touch.
+    assert(touch_update(&t, true, now += 10) == INPUT_NONE);
+    assert(touch_for(&t, false, 300, &now, INPUT_TOUCH, &other) == 0 && other == 0);
+}
+
+// --- microphone: synthetic 10 ms blocks at a mid-rail bias ---
+
+static uint32_t s_lcg = 1;
+
+// kind: 0 = quiet hiss, 1 = 500 Hz square of amplitude `amp`, 2 = overloaded (blowing).
+static void make_block(uint16_t *b, int kind, int amp) {
+    for (int i = 0; i < MIC_BLOCK; i++) {
+        s_lcg = s_lcg * 1103515245u + 12345u;
+        const int hiss = (int)((s_lcg >> 16) % 17) - 8;
+        int v = 2048 + hiss;
+        if (kind == 1) v += (i / 8) % 2 ? amp : -amp;
+        if (kind == 2) v = (i / 6) % 2 ? 4095 : 0;
+        b[i] = (uint16_t)(v < 0 ? 0 : v > 4095 ? 4095 : v);
+    }
+}
+
+typedef struct {
+    int n[INPUT_EVENT_COUNT];
+} heard_t;
+
+static void hear(mic_t *m, int kind, int amp, uint32_t ms, uint32_t *now, heard_t *h) {
+    uint16_t b[MIC_BLOCK];
+    for (uint32_t t = 0; t < ms; t += 10) {
+        make_block(b, kind, amp);
+        h->n[mic_block(m, b, MIC_BLOCK, *now += 10)]++;
+        h->n[mic_poll(m, *now)]++;
+    }
+}
+
+static int total(const heard_t *h) {
+    int n = 0;
+    for (int i = 1; i < INPUT_EVENT_COUNT; i++) n += h->n[i];
+    return n;
+}
+
+static void test_mic(void) {
+    static mic_t m;
+    uint32_t now = 5000;
+    heard_t h = {0};
+    mic_init(&m);
+
+    // A quiet room: nothing, for a long time.
+    hear(&m, 0, 0, 20000, &now, &h);
+    assert(total(&h) == 0);
+
+    // One clap: a CLAP, but only once the double-clap window has passed.
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 400, &now, &h);
+    assert(total(&h) == 0);
+    hear(&m, 0, 0, 800, &now, &h);
+    assert(total(&h) == 1 && h.n[INPUT_CLAP] == 1);
+    mic_sound_t s;
+    assert(mic_take_sound(&m, &s) && s.ev == INPUT_CLAP && s.ms <= MIC_CLAP_MAX_MS);
+
+    // Clap-clap: a DOUBLE_CLAP and no single CLAP.
+    h = (heard_t){0};
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 300, &now, &h);
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 1500, &now, &h);
+    assert(total(&h) == 1 && h.n[INPUT_DOUBLE_CLAP] == 1);
+
+    // Two claps a second apart: two CLAPs.
+    h = (heard_t){0};
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 1000, &now, &h);
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 1500, &now, &h);
+    assert(total(&h) == 2 && h.n[INPUT_CLAP] == 2);
+
+    // Talking: four syllables with short gaps. HEAR once it goes on, then
+    // TALK at the end, with the syllables counted.
+    h = (heard_t){0};
+    for (int i = 0; i < 4; i++) {
+        hear(&m, 1, 150, 160, &now, &h);
+        hear(&m, 0, 0, 80, &now, &h);
+    }
+    assert(h.n[INPUT_HEAR] == 1 && h.n[INPUT_TALK] == 0);
+    hear(&m, 0, 0, 500, &now, &h);
+    assert(total(&h) == 2 && h.n[INPUT_TALK] == 1);
+    assert(mic_syllables(&m) == 4);
+
+    // A shout: LOUD, and no listening face first.
+    h = (heard_t){0};
+    hear(&m, 1, 800, 600, &now, &h);
+    hear(&m, 0, 0, 500, &now, &h);
+    assert(total(&h) == 1 && h.n[INPUT_LOUD] == 1);
+
+    // Blowing on it overloads the mic: BLOW.
+    h = (heard_t){0};
+    hear(&m, 2, 0, 700, &now, &h);
+    hear(&m, 0, 0, 500, &now, &h);
+    assert(total(&h) == 1 && h.n[INPUT_BLOW] == 1);
+
+    // A short soft knock is nothing.
+    h = (heard_t){0};
+    hear(&m, 1, 120, 50, &now, &h);
+    hear(&m, 0, 0, 1500, &now, &h);
+    assert(total(&h) == 0);
+
+    // Music that goes on and on: maybe a HEAR at the start, never a TALK, and
+    // after a while it is just the room.
+    h = (heard_t){0};
+    hear(&m, 1, 150, 20000, &now, &h);
+    assert(h.n[INPUT_TALK] == 0 && h.n[INPUT_LOUD] == 0 && h.n[INPUT_HEAR] <= 1);
+    h = (heard_t){0};
+    hear(&m, 1, 150, 5000, &now, &h);
+    assert(total(&h) == 0);
+    hear(&m, 0, 0, 5000, &now, &h);  // quiet again: the floor drops back
+
+    // Deaf (our own buzzer): a clap meanwhile is nothing; after, it counts.
+    h = (heard_t){0};
+    mic_deaf(&m, now + 500);
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 1500, &now, &h);
+    assert(total(&h) == 0);
+    hear(&m, 1, 900, 30, &now, &h);
+    hear(&m, 0, 0, 1500, &now, &h);
+    assert(total(&h) == 1 && h.n[INPUT_CLAP] == 1);
+
+    // A steady hum below MIC_MIN_LEVEL still raises the floor, slowly: then
+    // soft speech is lost in it, where it was heard in the quiet.
+    h = (heard_t){0};
+    hear(&m, 1, 28, 30000, &now, &h);
+    assert(total(&h) == 0);
+    hear(&m, 1, 75, 600, &now, &h);
+    hear(&m, 1, 28, 500, &now, &h);
+    assert(total(&h) == 0);
+    hear(&m, 0, 0, 5000, &now, &h);
+    hear(&m, 1, 75, 600, &now, &h);
+    hear(&m, 0, 0, 500, &now, &h);
+    assert(h.n[INPUT_TALK] == 1);
+
+    // A noisy room (a fan) sets a higher floor: speech at that level is not
+    // a sound, louder speech still is.
+    h = (heard_t){0};
+    hear(&m, 1, 60, 15000, &now, &h);
+    assert(h.n[INPUT_TALK] == 0);
+    h = (heard_t){0};
+    hear(&m, 1, 70, 800, &now, &h);
+    hear(&m, 1, 60, 500, &now, &h);
+    assert(total(&h) == 0);
+    hear(&m, 1, 400, 800, &now, &h);
+    hear(&m, 1, 60, 500, &now, &h);
+    assert(h.n[INPUT_TALK] == 1);
+}
+
 int main(void) {
 #define RUN(t) (printf("%s\n", #t), t())
+    RUN(test_touch);
+    RUN(test_mic);
     RUN(test_button);
     RUN(test_motion_still);
     RUN(test_motion_shake);
