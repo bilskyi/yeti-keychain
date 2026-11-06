@@ -1,5 +1,10 @@
-// Power policy decisions that are pure functions of time and input: night
-// mode, the burn-in shift, and the contrast that goes with them.
+// Power policy decisions that are pure functions of time and input: when it
+// sleeps, when the screen goes off, the burn-in shift, and the contrast that
+// goes with them.
+//
+// It sleeps ("night") after SLEEP_AFTER_MS without input, or while lying face
+// down; the screen is off only face down. Any input wakes it, and so does
+// picking it up.
 //
 // Pure C, no ESP-IDF (host-tested). power.c does the hardware side.
 
@@ -12,28 +17,33 @@
 
 typedef struct {
     bool night;
-    bool forced;          // BTN_A_LONG put us to sleep by hand
-    bool woken;           // input ended the current scheduled night early
-    uint64_t woken_cycle; // ...which night that was
+    bool face_down;           // lying screen down: the screen is off
+    uint64_t last_activity;
+    uint64_t down_since;      // screen-down reading began, 0 = not now
+    int prev_mg[3];
+    bool has_prev;
 } policy_t;
 
-void policy_init(policy_t *p);
+void policy_init(policy_t *p, uint64_t now_ms);
 
-// Input that wakes without being a command (games and menus use the buttons
-// for their own things, so BTN_A_LONG must not put the face to sleep there).
+// Something happened (input, a menu or game in use): awake for another
+// SLEEP_AFTER_MS.
 void policy_note_activity(policy_t *p, uint64_t now_ms);
-
-// Any input wakes the face for the rest of the current night window, and
-// ends a night started by policy_sleep.
 void policy_on_event(policy_t *p, input_event_t ev, uint64_t now_ms);
 
-// Go to sleep now (the menu's SLEEP), until the next input.
-void policy_sleep(policy_t *p);
+// An accelerometer sample in the screen frame (input/orient.h: z = out of
+// the screen). Face-down only counts when `oriented` (calibrated); a pick-up
+// counts either way.
+void policy_feel(policy_t *p, const int mg[3], bool oriented, uint64_t now_ms);
 
 // Recomputes p->night. Returns true when it changed.
 bool policy_update(policy_t *p, uint64_t now_ms);
 
-uint8_t policy_contrast(const policy_t *p);
+// The screen should be off (face down).
+bool policy_screen_off(const policy_t *p);
+
+// The contrast for now: `day` while awake, CONTRAST_NIGHT asleep.
+uint8_t policy_contrast(const policy_t *p, uint8_t day);
 
 // Burn-in shift: the offset the whole face is drawn at, stepping through a
 // small loop every BURNIN_SHIFT_MS. Never beyond +-BURNIN_MAX_SHIFT_PX.

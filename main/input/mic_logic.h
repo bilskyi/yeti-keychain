@@ -45,6 +45,10 @@ typedef struct {
     uint32_t deaf_until;
     bool deaf;
 
+    // How loud it is right now (voice game): the block level, falling back
+    // slowly, and the threshold it was over.
+    int loud, thr;
+
     mic_sound_t last;
     bool has_last;
 } mic_t;
@@ -67,3 +71,7 @@ bool mic_take_sound(mic_t *m, mic_sound_t *out);
 
 // Syllables in the last INPUT_TALK, 1-9.
 int mic_syllables(const mic_t *m);
+
+// How loud it is now, 0-100: 0 at the threshold of a sound, 100 at a shout
+// (MIC_LOUD_LEVEL). 0 while deaf.
+int mic_loudness(const mic_t *m);

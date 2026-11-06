@@ -9,18 +9,16 @@
 #define SONG_MS 25 * MIN_MS, 70 * MIN_MS
 #define FIRST_HANG_MS 2 * MIN_MS, 5 * MIN_MS
 #define HANG_MS 20 * MIN_MS, 50 * MIN_MS
-#define ALARM_DELAY_MS 10000             // a new need: alarm this soon
-#define ALARM_REPEAT_MS (20UL * MIN_MS)  // and again while it lasts
 
-// Fragments of YETI-7's log, in story order (5x7 font: A-Z 0-9 ! . : - ? / ' + < >).
+// Fragments of YETI-7's log, in story order (5x7 font: A-Z 0-9 ! . : - ? / ' + < > = %).
 static const char *const LOG[] = {
     "YETI-7 ONLINE",  "SIGNAL LOST",   "BASE? HELLO?",  "CORE TEMP LOW",
     "SNOW IN GEARS",  "ERR 404: BASE", "MEMORY 12%",    "WHO ARE YOU?",
     "FRIEND FOUND!",  "REBOOTING...",  "ERR: TOO CUTE", "TAPE HOLDING",
-    "NEED SNACKS",    "SENSORS: COLD", "HUMMING MODULE", "STILL HERE",
+    "LOVE: 100%",    "SENSORS: COLD", "HUMMING MODULE", "STILL HERE",
 };
 #define LOG_COUNT (int)(sizeof(LOG) / sizeof(LOG[0]))
-#define SONG_COUNT 7  // sound/rtttl.c's songs_count(); kept here to stay pure
+#define SONG_COUNT 11 // sound/rtttl.c's songs_count(); kept here to stay pure
 
 static uint32_t later(story_t *s, uint32_t now, uint32_t lo, uint32_t hi) {
     return now + rng_range(&s->rng, lo, hi);
@@ -40,23 +38,11 @@ void story_init(story_t *s, uint32_t seed, uint32_t now) {
     s->song = (int)rng_range(&s->rng, 0, SONG_COUNT - 1);
 }
 
-story_event_t story_update(story_t *s, uint32_t now, uint8_t needs, bool idle, bool can_sing) {
-    // A need appearing (any new bit) is announced shortly; one going away
-    // cancels a pending announcement.
-    if (needs & ~s->needs) {
-        s->alarm_due = true;
-        s->next_alarm = now + ALARM_DELAY_MS;
-    }
-    if (!needs) s->alarm_due = false;
-    s->needs = needs;
-
+story_event_t story_update(story_t *s, uint32_t now, bool idle, bool can_sing) {
     if (!idle || !due(now, s->quiet_until)) return STORY_NONE;
 
     story_event_t ev = STORY_NONE;
-    if (s->alarm_due && due(now, s->next_alarm)) {
-        ev = STORY_ALARM;
-        s->next_alarm = now + ALARM_REPEAT_MS;  // still needing it then: again
-    } else if (due(now, s->next_song)) {
+    if (due(now, s->next_song)) {
         s->next_song = later(s, now, SONG_MS);
         if (can_sing) {
             ev = STORY_SONG;

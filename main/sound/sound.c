@@ -25,7 +25,6 @@ static const char *TAG = "sound";
 #define CHANNEL LEDC_CHANNEL_0
 #define CHANNEL_BRIDGE LEDC_CHANNEL_1
 #define DUTY_BITS LEDC_TIMER_10_BIT
-#define DUTY_ON ((1u << 10) * SOUND_DUTY_PCT / 100)
 
 #define SONG_MAX 320  // notes and gaps of the longest song
 #define SONG_GAP_MS 18
@@ -46,7 +45,6 @@ static const note_t GOODNIGHT[] = {{3136, 90}, {2349, 90}, {1568, 180}, {0, 0}};
 static const note_t BOOP[] = {{3136, 30}, {0, 0}};  // a pat on the head
 static const note_t GIGGLE[] = {{3520, 35}, {0, 25}, {3951, 35}, {0, 25}, {3520, 35}, {0, 25},
                                 {4186, 60}, {0, 0}};
-static const note_t SURPRISE[] = {{2637, 30}, {3951, 60}, {0, 0}};  // a clap
 // Menu and game effects, indexed by app_sound_t.
 static const note_t FX_MOVE[] = {{2794, 15}, {0, 0}};
 static const note_t FX_SELECT[] = {{2349, 40}, {3136, 60}, {0, 0}};
@@ -54,18 +52,12 @@ static const note_t FX_BACK[] = {{3136, 40}, {2349, 60}, {0, 0}};
 static const note_t FX_ROLL[] = {{1800, 20}, {0, 25}, {2300, 20}, {0, 25}, {1600, 20}, {0, 25},
                                  {2500, 20}, {0, 25}, {2000, 20}, {0, 0}};
 static const note_t FX_DING[] = {{3520, 40}, {4186, 120}, {0, 0}};
-static const note_t FX_COIN[] = {{3520, 30}, {0, 30}, {3520, 60}, {0, 0}};
 static const note_t FX_GO[] = {{3136, 160}, {0, 0}};
 static const note_t FX_FAIL[] = {{1047, 110}, {784, 170}, {0, 0}};
 static const note_t FX_POINT[] = {{3136, 30}, {4186, 40}, {0, 0}};
 static const note_t FX_FLAP[] = {{2093, 15}, {0, 0}};
 static const note_t FX_OVER[] = {{2349, 100}, {1760, 100}, {1319, 200}, {0, 0}};
 static const note_t FX_RECORD[] = {{2093, 60}, {2637, 60}, {3136, 60}, {4186, 180}, {0, 0}};
-static const note_t FX_EAT[] = {{1760, 25}, {0, 20}, {1568, 35}, {0, 0}};
-static const note_t FX_LEVELUP[] = {{2093, 70}, {2637, 70}, {3136, 70}, {0, 30}, {2637, 60},
-                                    {3136, 60}, {4186, 220}, {0, 0}};
-static const note_t FX_TONE_L[] = {{2093, 180}, {0, 0}};
-static const note_t FX_TONE_R[] = {{3136, 180}, {0, 0}};
 static const note_t FX_HI[] = {{2637, 50}, {0, 30}, {3520, 90}, {0, 0}};
 static const note_t FX_SCARED[] = {{3520, 40}, {3136, 40}, {3520, 40}, {3136, 40}, {3520, 40},
                                    {3136, 40}, {0, 0}};
@@ -74,11 +66,6 @@ static const note_t FX_WHEE[] = {{1568, 40}, {1976, 40}, {2349, 40}, {2794, 40},
 // "ah... ah... CHOO": two rising breaths, then a burst at the "choo" frame.
 static const note_t FX_SNEEZE[] = {{1760, 120}, {0, 160}, {2093, 140}, {0, 280}, {3951, 30},
                                    {2349, 30}, {1568, 60}, {0, 0}};
-// A siren: two tones swapping, then a rising wail, about two seconds.
-static const note_t FX_ALARM[] = {{2637, 180}, {3520, 180}, {2637, 180}, {3520, 180},
-                                  {2093, 60},  {2349, 60},  {2637, 60},  {2960, 60},
-                                  {3322, 60},  {3729, 60},  {3951, 200}, {0, 120},
-                                  {2637, 180}, {3520, 180}, {2637, 180}, {3520, 300}, {0, 0}};
 // Garbled data: a burst of unrelated chirps, like a modem having a bad day.
 static const note_t FX_GLITCH[] = {{3951, 20}, {1568, 30}, {0, 20}, {3322, 15}, {2093, 40},
                                    {0, 60},    {3729, 15}, {1760, 15}, {3951, 15}, {0, 40},
@@ -112,31 +99,47 @@ static const note_t FX_ROFL[] = {{3951, 35}, {0, 25}, {3520, 35}, {0, 25}, {3951
                                  {3136, 35}, {0, 25}, {3520, 35}, {0, 25}, {2794, 35}, {0, 25},
                                  {3136, 35}, {0, 25}, {2637, 35}, {0, 25}, {2794, 35}, {0, 25},
                                  {2349, 90}, {0, 0}};
-// A whoosh: a quick slide down through jittery pitches.
-static const note_t FX_WIND[] = {{3729, 20}, {3322, 20}, {3520, 20}, {3136, 20}, {3322, 20},
-                                 {2794, 20}, {2960, 20}, {2489, 20}, {2637, 20}, {2217, 20},
-                                 {2349, 25}, {1976, 30}, {2093, 30}, {1760, 40}, {0, 0}};
+// Voice game: a hop up (only between games: the mic is deaf while it plays).
+static const note_t FX_JUMP[] = {{2093, 25}, {3136, 40}, {0, 0}};
 static const note_t FX_STRETCH[] = {{1760, 180}, {2093, 180}, {2637, 260}, {0, 60}, {2349, 200}, {0, 0}};
+// Charger in: a rising zip into a bright double chime. Out: a short drop.
+static const note_t FX_CHARGE[] = {{1568, 30}, {2093, 30}, {2637, 30}, {3136, 30}, {0, 40},
+                                   {3951, 60}, {0, 30}, {4186, 140}, {0, 0}};
+static const note_t FX_UNPLUG[] = {{3136, 50}, {2093, 120}, {0, 0}};
+// The 67 easter egg: a whine charging up, a low SIX, a higher SEVEN, a tick
+// per swing of the hands, and a crumbling blast.
+static const note_t FX_EGG_RISE[] = {{1047, 50}, {1319, 50}, {1568, 50}, {2093, 50}, {2637, 50},
+                                     {3136, 60}, {3520, 70}, {3951, 90}, {0, 0}};
+static const note_t FX_EGG_SIX[] = {{2093, 25}, {1047, 200}, {0, 0}};
+static const note_t FX_EGG_SEVEN[] = {{3136, 25}, {1568, 240}, {0, 0}};
+static const note_t FX_EGG_TICK[] = {{2637, 30}, {0, 0}};
+static const note_t FX_EGG_BOOM[] = {{3951, 20}, {1245, 25}, {3322, 20}, {988, 30}, {2349, 20},
+                                     {784, 40}, {1568, 30}, {659, 60}, {523, 160}, {0, 0}};
 static const note_t FX_BOOT[] = {{1568, 60}, {0, 30}, {2093, 60}, {2637, 60}, {3136, 60}, {4186, 200}, {0, 0}};
 
 static const note_t *const FX[SND_COUNT] = {
     [SND_MOVE] = FX_MOVE,     [SND_SELECT] = FX_SELECT, [SND_BACK] = FX_BACK,
-    [SND_ROLL] = FX_ROLL,     [SND_DING] = FX_DING,     [SND_COIN] = FX_COIN,
-    [SND_GO] = FX_GO,         [SND_FAIL] = FX_FAIL,     [SND_POINT] = FX_POINT,
-    [SND_FLAP] = FX_FLAP,     [SND_OVER] = FX_OVER,     [SND_RECORD] = FX_RECORD,
-    [SND_EAT] = FX_EAT,       [SND_LEVELUP] = FX_LEVELUP, [SND_TONE_L] = FX_TONE_L,
-    [SND_TONE_R] = FX_TONE_R, [SND_HI] = FX_HI,         [SND_SCARED] = FX_SCARED,
-    [SND_WHEE] = FX_WHEE,     [SND_SNEEZE] = FX_SNEEZE, [SND_HUM] = FX_HUM,
-    [SND_ALARM] = FX_ALARM,   [SND_GLITCH] = FX_GLITCH, [SND_HMPH] = FX_HMPH,
+    [SND_ROLL] = FX_ROLL,     [SND_DING] = FX_DING,     [SND_GO] = FX_GO,
+    [SND_FAIL] = FX_FAIL,     [SND_POINT] = FX_POINT,   [SND_FLAP] = FX_FLAP,
+    [SND_OVER] = FX_OVER,     [SND_RECORD] = FX_RECORD, [SND_HI] = FX_HI,
+    [SND_SCARED] = FX_SCARED, [SND_WHEE] = FX_WHEE,     [SND_SNEEZE] = FX_SNEEZE,
+    [SND_HUM] = FX_HUM,       [SND_GLITCH] = FX_GLITCH, [SND_HMPH] = FX_HMPH,
     [SND_PURR] = FX_PURR,     [SND_GROWL] = FX_GROWL,   [SND_FURY] = FX_FURY,
     [SND_KO] = FX_KO,         [SND_AWW] = FX_AWW,       [SND_SIGH] = FX_SIGH,
     [SND_ZAP] = FX_ZAP,       [SND_ERROR] = FX_ERROR,   [SND_POWERDOWN] = FX_POWERDOWN,
     [SND_BOOT] = FX_BOOT,     [SND_HEARTBEAT] = FX_HEARTBEAT, [SND_SPARKLE] = FX_SPARKLE,
     [SND_BUZZ] = FX_BUZZ,     [SND_TWINKLE] = FX_TWINKLE, [SND_ROFL] = FX_ROFL,
-    [SND_WIND] = FX_WIND,     [SND_STRETCH] = FX_STRETCH,
+    [SND_STRETCH] = FX_STRETCH, [SND_JUMP] = FX_JUMP,
+    [SND_CHARGE] = FX_CHARGE, [SND_UNPLUG] = FX_UNPLUG,
+    [SND_EGG_RISE] = FX_EGG_RISE, [SND_EGG_SIX] = FX_EGG_SIX, [SND_EGG_SEVEN] = FX_EGG_SEVEN,
+    [SND_EGG_TICK] = FX_EGG_TICK, [SND_EGG_BOOM] = FX_EGG_BOOM,
 };
 
+// Volume is the PWM duty: 50% is the loudest a passive buzzer gets, and it
+// falls off fast below ~15%. Indexed by the menu's level, 0 = off.
+static const uint8_t DUTY_PCT[APP_VOLUME_LEVELS] = {0, 3, 12, SOUND_DUTY_PCT};
 static bool s_muted;
+static uint32_t s_duty = (1u << 10) * SOUND_DUTY_PCT / 100;
 static bool s_ready;
 static esp_timer_handle_t s_timer;
 static esp_pm_lock_handle_t s_awake;
@@ -156,7 +159,7 @@ static SemaphoreHandle_t s_mutex;
 // both duties are 0 and both pins sit low, so no DC flows through the coil.
 static void tone(uint16_t hz) {
     if (hz) ledc_set_freq(MODE, TIMER, hz);
-    const uint32_t duty = hz ? DUTY_ON : 0;
+    const uint32_t duty = hz ? s_duty : 0;
     ledc_set_duty_with_hpoint(MODE, CHANNEL, duty, 0);
     ledc_update_duty(MODE, CHANNEL);
 #if PIN_BUZZER_BRIDGE >= 0
@@ -273,17 +276,17 @@ void sound_on_event(input_event_t ev) {
         case INPUT_TILT_RIGHT: tune = TILT; break;
         case INPUT_BTN_A_SHORT:
         case INPUT_BTN_A_LONG: tune = CLICK_A; break;
-        case INPUT_BTN_B_LONG:
-        case INPUT_BTN_C_SHORT: tune = CLICK_BC; break;
-        case INPUT_BTN_C_LONG: tune = HAPPY; break;
+        case INPUT_BTN_B_LONG: tune = CLICK_BC; break;
+        case INPUT_BTN_C_SHORT:  // the status card makes its own sound
+        case INPUT_BTN_C_LONG:
         case INPUT_TOUCH: tune = BOOP; break;
         case INPUT_TOUCH_HOLD: tune = FX_PURR; break;
         case INPUT_TOUCH_END: tune = HAPPY; break;
         case INPUT_TICKLE: tune = GIGGLE; break;
-        case INPUT_CLAP: tune = SURPRISE; break;
-        case INPUT_DOUBLE_CLAP:  // a song (main.c)
-        case INPUT_LOUD:         // the face's cues: scared...
-        case INPUT_BLOW:         // ...and the sneeze
+        case INPUT_CLAP:  // the mic only hears talking now (mic.c)
+        case INPUT_DOUBLE_CLAP:
+        case INPUT_LOUD:
+        case INPUT_BLOW:
         case INPUT_HEAR:
         case INPUT_TALK:  // sound_babble (main.c)
         case INPUT_BTN_B_SHORT:  // opens the menu, which makes its own sound
@@ -355,9 +358,12 @@ void sound_set_note_hook(void (*hook)(uint16_t hz, uint16_t ms)) {
     s_note_hook = hook;
 }
 
-void sound_set_muted(bool muted) {
-    s_muted = muted;
-    if (muted && s_ready) {
+void sound_set_volume(int level) {
+    if (level < 0) level = 0;
+    if (level >= APP_VOLUME_LEVELS) level = APP_VOLUME_LEVELS - 1;
+    s_muted = level == 0;
+    s_duty = (1u << 10) * DUTY_PCT[level] / 100;
+    if (s_muted && s_ready) {
         xSemaphoreTake(s_mutex, portMAX_DELAY);
         esp_timer_stop(s_timer);
         finish();

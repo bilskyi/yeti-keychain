@@ -21,7 +21,6 @@
 #include "display/gfx.h"
 #include "face/rng.h"
 #include "input/input_event.h"
-#include "pet/pet.h"
 
 typedef enum {
     // Moods: the mood machine drifts between these on its own.
@@ -60,14 +59,12 @@ typedef enum {
     IDLE_HUM,     // music notes drifting up
     IDLE_FLY,     // a fly buzzes about, the eyes follow it; it lands, gets blinked off
     IDLE_SNOW,    // snow falls, it looks up happily (and maybe sneezes)
-    IDLE_BLOWN,   // blown on: squinting into the wind, pushed aside, then a sneeze
     IDLE_STRETCH, // waking up: a big stretch, tall then squashed, settling
 } idle_kind_t;
 
 // A full-face effect on top of (or instead of) the expression.
 typedef enum {
     FX_NONE = 0,
-    FX_ALARM,   // the screen flashes, a warning sign blinks
     FX_GLITCH,  // the picture tears, a line of the log flickers up
     FX_SING,    // eyes shut happily, mouth going, notes flying
     FX_HANG,    // frozen: "NOT RESPONDING" until shaken back to life (face_hang)
@@ -98,7 +95,6 @@ typedef enum {
     CUE_BUZZ,      // a fly turns up
     CUE_SNOW,      // it starts to snow
     CUE_ROFL,      // rolling with laughter
-    CUE_WIND,      // blown on
     CUE_STRETCH,   // waking up with a stretch
     CUE_JOLT,      // shaken while hung: a jolt, the bar moves
     CUE_ERROR,     // anything else while hung: an error beep
@@ -145,7 +141,6 @@ typedef struct {
     bool night;
     uint32_t now;  // last face_update() time, for rendering
 
-    uint8_t needs;  // PET_NEED_* bits: drives the mood and the thought bubble
     face_cue_t cue;
 
     // Body sense (face_feel).
@@ -176,7 +171,6 @@ typedef struct {
     uint32_t pet_since;
     int pet_stage;
 
-    int idle_dir;    // IDLE_BLOWN: which way the wind blows
     bool idle_mark;  // IDLE_FLY: the fly has been blinked at
 
     bool giggled;  // laughed at a tickle: another one soon and it rolls
@@ -213,7 +207,6 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now);
 // `oriented`: the sensor is calibrated, so "upside down" can be trusted.
 void face_feel(face_t *f, const int mg[3], bool oriented, uint32_t now);
 
-void face_set_needs(face_t *f, uint8_t needs);  // PET_NEED_* bits
 
 // Starts an effect for ms (0 = until stopped). `text` must outlive it.
 void face_fx(face_t *f, face_fx_t fx, const char *text, uint32_t now, uint32_t ms);
@@ -250,7 +243,6 @@ const char *face_expression_name(expression_t e);
 typedef struct {
     bool night;
     uint32_t ms_since_input;  // UINT32_MAX when there has never been any
-    uint8_t needs;            // PET_NEED_* bits
 } mood_ctx_t;
 
 // Next spontaneous expression and how long it holds.

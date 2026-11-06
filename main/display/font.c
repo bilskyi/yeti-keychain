@@ -31,9 +31,10 @@ static const struct {
     {'?', {0x02, 0x01, 0x51, 0x09, 0x06}}, {'/', {0x20, 0x10, 0x08, 0x04, 0x02}},
     {'<', {0x08, 0x14, 0x22, 0x41, 0x00}}, {'>', {0x00, 0x41, 0x22, 0x14, 0x08}},
     {'+', {0x08, 0x08, 0x3E, 0x08, 0x08}}, {'\'', {0x00, 0x00, 0x07, 0x00, 0x00}},
+    {'=', {0x14, 0x14, 0x14, 0x14, 0x14}}, {'%', {0x23, 0x13, 0x08, 0x64, 0x62}},
 };
 
-static const uint8_t *glyph(char c) {
+const uint8_t *font_glyph(char c) {
     static const uint8_t SPACE[FONT_W] = {0};
     if (c >= '0' && c <= '9') return DIGITS[c - '0'];
     if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
@@ -52,7 +53,7 @@ int font_width(const char *s, int scale) {
 int font_draw(gfx_t *g, int x, int y, const char *s, int scale, gfx_color_t c) {
     const int x0 = x;
     for (; *s; s++, x += FONT_ADVANCE * scale) {
-        const uint8_t *cols = glyph(*s);
+        const uint8_t *cols = font_glyph(*s);
         for (int cx = 0; cx < FONT_W; cx++) {
             for (int cy = 0; cy < FONT_H; cy++) {
                 if (cols[cx] & (1u << cy)) gfx_fill_rect(g, x + cx * scale, y + cy * scale, scale, scale, c);

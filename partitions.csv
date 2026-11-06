@@ -1,0 +1,16 @@
+# Two app slots, so the keychain can be updated without its USB port
+# (Settings > UPDATE, net/update.h): the new image is written to the slot that
+# is not running, and the bootloader is told to prefer it only once it is
+# complete and verified. `otadata` is where that preference lives.
+#
+# The same table as BIT's. `nvs` does not move - same offset, same size as the
+# single-app table it replaces - so the scores, the settings and the BIT it
+# found survive the one cable flash this table costs. The table itself cannot
+# be changed over the air.
+#
+# Name,     Type, SubType,  Offset,   Size
+nvs,        data, nvs,      0x9000,   0x6000
+otadata,    data, ota,      0xf000,   0x2000
+phy_init,   data, phy,      0x11000,  0x1000
+ota_0,      app,  ota_0,    0x20000,  0x1F0000
+ota_1,      app,  ota_1,    0x210000, 0x1F0000

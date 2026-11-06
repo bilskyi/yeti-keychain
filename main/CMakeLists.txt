@@ -24,29 +24,40 @@ set(KC_SRCS
     sound/sound.c
     storage/storage.c
     app/app.c
-    app/game_luck.c
+    app/game_dice.c
     app/game_reaction.c
     app/game_catch.c
+    app/game_maze.c
     app/game_flappy.c
     app/game_snake.c
-    app/game_memory.c
-    app/care.c
+    app/game_voice.c
+    app/game_setup.c
     app/game_music.c
+    app/music_viz.c
+    app/game_egg.c
+    app/art.c
     pet/story.c
     sound/rtttl.c
     led/led.c
-    pet/pet.c
     input/orient.c
     input/touch_logic.c
     input/touch.c
     input/mic_logic.c
     input/mic.c
-    net/net.c)
+    net/net.c
+    link/bitlink.c
+    link/pong.c
+    link/buddy.c
+    app/game_toss.c
+    app/game_pong.c
+    app/game_update.c
+    net/update.c)
 
 idf_component_register(SRCS ${KC_SRCS}
                        INCLUDE_DIRS "."
                        PRIV_REQUIRES esp_driver_i2c esp_driver_gpio esp_driver_ledc esp_adc nvs_flash
-                                     esp_pm esp_timer)
+                                     esp_pm esp_timer esp_wifi esp_netif esp_event esp_http_server app_update
+                                     bootloader_support esp_app_format)
 
 # Stricter than IDF's defaults, for our code only, and fatal: v0.1 ships with
 # zero warnings and stays that way.

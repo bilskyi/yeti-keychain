@@ -5,9 +5,9 @@
 // is held off only while a sound plays.
 //
 // It sounds in answer to input, once at boot, and for the pet's own events
-// (alarms when it needs something, glitches, a random song; story.c), never
+// (glitches, a random song; story.c), never
 // at night.
-// Mute is a menu setting, kept in NVS by main.c (sound_set_muted at boot).
+// Volume is a menu setting, kept in NVS by main.c (sound_set_volume at boot).
 
 #pragma once
 
@@ -22,9 +22,9 @@ void sound_hello(void);
 void sound_goodnight(void);
 void sound_on_event(input_event_t ev);
 void sound_fx(app_sound_t fx);  // menu and game sounds
-void sound_set_muted(bool muted);
+void sound_set_volume(int level);  // 0 = off .. APP_VOLUME_LEVELS - 1
 // Songs (sound/rtttl.h). A song is cut off by any other sound.
-bool sound_song(int i);  // false when muted or no such song
+bool sound_song(int i);  // false when the sound is off or no such song
 void sound_stop(void);
 bool sound_song_playing(void);
 // Answering someone who talked: one chirp per syllable (1-9).
@@ -38,7 +38,7 @@ static inline void sound_hello(void) {}
 static inline void sound_goodnight(void) {}
 static inline void sound_on_event(input_event_t ev) { (void)ev; }
 static inline void sound_fx(app_sound_t fx) { (void)fx; }
-static inline void sound_set_muted(bool muted) { (void)muted; }
+static inline void sound_set_volume(int level) { (void)level; }
 static inline bool sound_song(int i) { (void)i; return false; }
 static inline void sound_stop(void) {}
 static inline bool sound_song_playing(void) { return false; }

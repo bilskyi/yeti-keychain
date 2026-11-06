@@ -20,7 +20,8 @@ typedef struct {
 // Returns the number of entries before the terminator (0 on a bad string).
 int rtttl_parse(const char *s, note_t *out, int max, int gap_ms);
 
-// The songs the keychain knows (public domain melodies).
+// The songs the keychain knows: public domain melodies, then ringtones from
+// the RTTTL-Ringtones collection.
 int songs_count(void);
 const char *song_name(int i);   // upper case, fits the 5x7 font
 const char *song_rtttl(int i);

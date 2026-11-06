@@ -72,6 +72,7 @@ void input_accel_set_orient(const int8_t map[3]);
 void input_mic_listen(bool on);
 void input_mic_set_deaf_check(bool (*check)(void));
 int input_mic_syllables(void);  // in the last INPUT_TALK, 1-9
+int input_mic_loudness(void);   // now, 0-100 (0 while not listening); -1 = no mic
 
 // The sources (defined in their own files, only under their flags).
 extern const input_source_t input_source_buttons;

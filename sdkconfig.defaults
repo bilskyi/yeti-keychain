@@ -26,3 +26,7 @@ CONFIG_ESP_BROWNOUT_DET=y
 # The Super Mini carries 4 MB (the boot log detects it); the default 2 MB
 # header just hides the other half.
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Two app slots for updates over WiFi (partitions.csv, net/update.h).
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

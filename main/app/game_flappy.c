@@ -9,13 +9,13 @@
 #define TICK_MS 33
 #define BIRD_X 30
 #define BIRD_R 5
-#define GRAVITY 7      // 1/16 px per tick^2
-#define FLAP_VY (-52)  // 1/16 px per tick
-#define MAX_VY 80
+#define GRAVITY 5      // 1/16 px per tick^2
+#define FLAP_VY (-42)  // 1/16 px per tick
+#define MAX_VY 64
 #define PIPE_W 10
-#define PIPE_GAP 26     // px
-#define PIPE_SPACING 56  // px between pipes
-#define PIPE_SPEED 24    // 1/16 px per tick (1.5 px)
+#define PIPE_GAP 34     // px
+#define PIPE_SPACING 70  // px between pipes
+#define PIPE_SPEED 18    // 1/16 px per tick (1.1 px)
 
 static void place_pipe(app_t *a, int i, int x16) {
     flappy_t *f = &a->g.fl;
@@ -72,7 +72,6 @@ static void crash(app_t *a, uint32_t now) {
     f->best = app_record(a, &a->save.flappy_pts, (uint16_t)f->score, false);
     a->mood = f->best ? EXPR_EXCITED : EXPR_DIZZY;
     app_play(a, f->best ? SND_RECORD : SND_FAIL);
-    app_reward(a, 4 + (f->score > 12 ? 12 : f->score), 3, 2 + f->score);
 }
 
 static void tick(app_t *a, uint32_t now) {
@@ -154,8 +153,8 @@ void flappy_render(const app_t *a, gfx_t *g) {
     const int bob = f->phase == FLAPPY_START ? app_sin64((int)(a->now / 30)) * 3 / 256 : 0;
     bird(g, f->y / 16 + bob, f->vy, a->now);
     if (f->phase == FLAPPY_START) {
-        font_draw_centered(g, 82, 22, "A:FLAP", 1, GFX_WHITE);
-        font_draw_centered(g, 82, 34, "B:BACK", 1, GFX_WHITE);
+        font_draw_centered(g, 82, 22, "FLAPPY", 2, GFX_WHITE);
+        app_hint(g, "FLAP", NULL, "BACK");
     } else {
         char n[8];
         app_itoa(f->score, n);

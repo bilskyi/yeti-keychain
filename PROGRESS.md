@@ -15,9 +15,9 @@
 - Feature flags overridable with `-DKC_FEATURES="FEATURE_X=1;..."`, one build
   dir per variant (`-B build-allon`). Sources listed explicitly in
   `main/CMakeLists.txt` (IDF can't re-glob).
-- Night mode stub = uptime cycle (30 min awake / 10 min night); any input ends
-  the current night; BTN_A_LONG forces night. Night face = shut eyes + zzz
-  (~130 lit px vs ~1400 awake).
+- Sleep = 10 min without input (was an uptime cycle until v0.7); any input
+  or picking it up wakes it; face down turns the screen off. Sleeping face =
+  shut eyes + zzz (~130 lit px vs ~1400 awake).
 - Low battery / brownout: low-battery face 4 s, then deep sleep with a 10 min
   **timer retry** (a brownout can be switch bounce, not an empty cell).
 - Frame pacing: 30 fps while animating, 5 fps when still; flush sends only
@@ -208,6 +208,112 @@
     breath while petted (dimmer when dozing); fury flicker, KO fade, a stuck
     flicker while hung, a boot ramp; a flash per chirp when it babbles back.
 
+- 2026-10-27 **v0.7: the rework after it went into the real case.** Sasha
+  picked features in the Yeti Feature Picker artifact
+  (https://claude.ai/artifact/LntnUsjr31pYgowuuNJPda). Hardware fixes first:
+  - SDA and SCL were shorted together after rewiring (found by driving one
+    and reading the other); `i2c_bus.c` now logs a held-low or bridged bus
+    at boot;
+  - the OLED sits rotated 180 degrees: `DISPLAY_UPSIDE_DOWN 1`;
+  - buttons left to right on the case are A, B, C = GPIO20, GPIO3, GPIO1
+    (A moved to GPIO20, so deep-sleep wake is now B or C).
+  Then the firmware:
+  - **one rule per button, on every screen**: A do, B next, C back; held C
+    = home. The bottom line shows each word above its button. On the face:
+    A pets, B menu, C status card (volume, brightness, battery/USB);
+  - menu = GAMES / MUSIC / SETTINGS. Games: dice, reaction, catch, flappy,
+    snake, and the new **voice** game (shout to jump, louder = higher, hum
+    to float; A jumps too, so it plays without a mic). Settings: volume
+    (off/quiet/medium/loud, via PWM duty 0/3/12/50 %), brightness
+    (dim/normal/bright), calibrate;
+  - removed: the tamagotchi (feeding, stats, needs, levels, need alarm),
+    coin flip, memory, the sleep menu item, blow/clap/loud reactions (the mic
+    now only reports talking; mic.c filters the rest);
+  - sleep is now "nobody touched it for 10 min" (no clock, so no fake
+    uptime night); picking it up wakes it; lying face down turns the screen
+    off (needs Settings > Calibrate);
+  - save record v3 (scores, volume, brightness, calibration); a v2 record is
+    migrated, keeping scores and calibration;
+  - `make preview` also renders the menu and games to `host/out/app.png`.
+
+- 2026-10-28 **v0.8: Maze.** A tilt game in GAMES after Catch: hold it flat,
+  tilt to roll the ball to the ring. Mazes are generated (recursive
+  backtracker, goal = the deepest cell), cells 16 → 12 → 10 → 8 px level by
+  level; a time bar (45 s, + 8 s + 0.12 s per cell for each maze solved, up to
+  99 s); one point per maze. The ball rolls with the in-plane tilt minus the
+  tilt at the start, so it needn't be perfectly level. New env `tilt_xy`;
+  save record v4 (adds `maze_pts`, v3 migrated). Not yet tried on the device.
+  Planned (wiring on the wiring page, not soldered): battery divider on
+  GPIO2, charger sense from TP4056 IN+ to GPIO21 for a charging animation.
+
+- 2026-10-28 **Flat menus and 7 more songs.** No GAMES / MUSIC / SETTINGS
+  level any more (Sasha: fewer clicks, one interface). From the face: B =
+  the games list (opens on the last game played), held B = the jukebox
+  (opens already playing the last song; B = next song, playing at once), C =
+  the status card, with volume / brightness / calibrate after it. C in a
+  list goes back to the face. A two-button chord was considered and dropped:
+  every single press would have to wait to see if a second one follows.
+  Songs: Sasha picked 7 in the Yeti Song Picker artifact
+  (https://claude.ai/artifact/L7xH5xbGpzZCryEufvbFWg, db `picks/songs`) from
+  huggingface.co/datasets/cosimoiaia/RTTTL-Ringtones: Barbie Girl, Final
+  Countdown, Harry Potter, Imperial March, Last Christmas, Mortal Kombat,
+  Take On Me, raised 1-2 octaves into the buzzer's 1-4 kHz. Two had the next
+  ringtone glued on in the dataset, cut off. The parser now reads "_" as a
+  sharp, as that collection does. Then Mountain King, Ode to Joy, Twinkle
+  and Für Elise dropped (Sasha): 10 songs, which the Yeti also sings on its
+  own (story.c SONG_COUNT 10, a test checks it sings every one).
+
+- 2026-10-28 **Battery percent and the charging animation, on the device.**
+  Both dividers soldered with 5.1 kΩ (what Sasha had): battery on GPIO2
+  (reads ~5460 mV on USB, shown as "USB"), charger sense IN+ → GPIO21.
+  First try read 0 always: the joints between the resistors were also on
+  GND; only the last resistor's end may be. Found with a pull-up test (the
+  pin read 0 with the internal pull-up on). Animation: cable in (held
+  CHARGE_DEBOUNCE_MS) = star eyes, SND_CHARGE, LED rise, wakes it; the HUD
+  battery gets a bolt and its fill sweeps up to full (also on USB, switch
+  off); full (≥ 100 %, switch on only) = happy + ding, once; cable out =
+  surprised, SND_UNPLUG. Status card: bolt and "CHG" (or the %).
+
+- 2026-10-28 **Music animations, a song chooser, the mute icon, the 67 egg.**
+  Holding B opens the chooser on the last song, silent (Sasha: the user
+  must choose); A plays, B next, C back. Playing: A / C stop (back to the
+  list), B next song at once. Nine animations (music_viz.c), picked by Sasha
+  in the Yeti Visualizers artifact
+  (https://claude.ai/artifact/FmounxUi3W3KfGsELwoJWa, db
+  `picks/visualizers`): Dancing Yeti, Bouncing Ball, Synthwave, Vinyl, Yeti
+  DJ, Warp, Note Rain, Oscilloscope, Equalizer; one at random per song,
+  never the same twice running. The app parses the playing song itself
+  (gap 0, so start times add up) and feeds each note to the animation on
+  its own clock: no hook from sound.c needed. The song's name shows for
+  2.5 s. Sound off: "SOUND OFF" in the chooser. Mute icon (hud_muted) top
+  right on the face while volume is 0. Easter egg (game_egg.c): six presses
+  of A (each within 0.9 s), then a shake within 3 s: a 7 s "67" show
+  (charge-up, 6 and 7 slam in with flashes and shake, shockwaves, the 6-7
+  hands with SIX SEVEN scrolling, a spin, an explosion, a fanfare), then an
+  excited face. Previews in host/out/app.png.
+
+- 2026-10-28 **Sasha's running order, new game cards, Dino Roar.** Games and
+  songs in the order set in the Yeti Running Order artifact
+  (https://claude.ai/artifact/FzG9RZ1VHmfEmNqoHkGEmB, db `order/main`):
+  Catch, Maze, Flappy, Snake, Dino Roar, Reaction, Dice; songs from Barbie
+  Girl to Happy Birthday. The games list opens on Catch the first time.
+  Each game's menu screen is a big picture and its name, nothing else
+  (art.c). A first try with a framed scene, how-to lines and the best score
+  was rejected by Sasha: "keep it simple". The jukebox's list got a
+  themed picture per song too (a heart for Barbie Girl, a rocket for Final
+  Countdown, Tetris for Korobeiniki, glasses and the scar for Harry Potter,
+  a battle station for Imperial March, a cake for Happy Birthday...), with
+  the name and a dot per song; the "SONG 3/10" line is gone. Settings keep
+  the icon-and-name screen. Voice is now
+  Dino Roar (Sasha: "we cannot even name it a voice"): a Chrome-style
+  dinosaur that opens its jaw and lets out sound waves while you are loud,
+  cacti instead of rocks, "ROAR!" on the title. The item is still
+  ITEM_VOICE and the score still `voice_pts`, so saves carry over.
+- 2026-10-30 **Easier Flappy, Supergirl.** Flappy: gap 26 → 34 px, pipes
+  56 → 70 px apart and slower (1.5 → 1.1 px/tick), softer gravity and flap.
+  New 11th song: Supergirl (Reamonn), the chorus of the vocal line (from a Songsterr transcription), with a
+  hero-shield picture.
+
 ## In progress
 - Yeti: waiting for Sasha's review; then caliper measurements (boards,
   battery, switch, OLED position) to replace PLACEHOLDERs. Boltik design
@@ -219,14 +325,10 @@
 - Phase 3 (case): only after hardware confirmation + caliper measurements.
 
 ## Open questions
-- Battery sense and the mic both want GPIO4 (ADC1 is GPIO0-4 only; GPIO2 is
-  strapping). When the battery goes in, something moves; to decide then
-  (GPIO21 is UART TX at boot, so not for an input like INT1).
-- Battery + power path + Rprog swap: **deferred by Sasha (2026-10-23)**, battery
-  goes in last. Reminder before first charge: stock Rprog 1.2k is ~3x too much
-  for 300 mAh; charge only supervised until swapped.
-- LiPo is **300 mAh** (Sasha, 2026-10-23); physical size still unknown (needed
-  for Phase 3). Stock Rprog 1.2k = ~1 A = 3.3C, too much: needs 4.7-5.1k
-  (Sasha only has 100k on hand, which is fine for the divider, not Rprog).
+- Battery sense goes on GPIO2 (strapping: confirm it still boots with the
+  divider fitted); the mic keeps GPIO4. Charger sense on GPIO21.
+- LiPo is now **850 mAh** (Sasha, 2026-10-28; was 300 mAh). Stock Rprog 1.2k
+  = ~1 A = ~1.2C: OK if the cell allows 1C, else 1.5k (~800 mA). Supervise
+  the first charges. Physical size still needed for the case.
 - Battery divider will be 100k + 100k (not 1M + 1M), ratio still 2.
 - Super Mini power LED: always-on, drains the cell even in deep sleep. Remove it?

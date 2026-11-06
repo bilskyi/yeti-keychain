@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
     face_render(&f, &g);
     gfx_set_offset(&g, 0, 0);
     const battery_status_t b = {BATTERY_OK, 3800, 55};
-    hud_battery(&g, &b, 0);
+    hud_battery(&g, &b, false, 0);
     write_pbm(dir, idx++, "shifted_with_battery", &g);
 
     // Petting melted, fury with three puffs, a hang (frozen, then the hint),
@@ -118,13 +118,6 @@ int main(int argc, char **argv) {
     f.look_y = -3;
     SNAP("snow");
     f.look_y = 0;
-    settle(&f, EXPR_NEUTRAL, &now);
-    face_start_idle(&f, IDLE_BLOWN, now);
-    f.now = now + 600;
-    f.look_x = 12;
-    SNAP("wind");
-    f.look_x = 0;
-    f.idle = IDLE_NONE;
     settle(&f, EXPR_LAUGH, &now);
     f.expr_since = now - 300;
     f.now = now;

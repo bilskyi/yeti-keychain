@@ -39,7 +39,8 @@
 #define PIN_BTN_B 3
 #define PIN_BTN_C 1
 #define PIN_ACCEL_INT1 0     // LIS3DH INT1, same I2C bus as the OLED
-#define PIN_BATTERY_ADC 4    // 1M/1M divider + 100 nF, ADC1 channel 4 (taken by the mic: see below)
+#define PIN_BATTERY_ADC 2    // 5.1k/5.1k divider from the 5V pin (after the switch), ADC1 channel 2
+#define PIN_CHARGE_SENSE 21  // TP4056 IN+ - 5.1k - here - 2 x 5.1k - GND: high while the charging cable is in
 #define PIN_BUZZER 10        // passive buzzer, LEDC PWM; not a wake source
 // Buzzer's other leg: -1 = on GND (current wiring; loud enough per Sasha).
 // Set 21 and move the leg to GPIO21 for a bridge: the second pin is driven in
@@ -75,13 +76,29 @@
 #define FEATURE_MIC 1
 #endif
 #ifndef FEATURE_BATTERY_ADC
-#define FEATURE_BATTERY_ADC 0
+#define FEATURE_BATTERY_ADC 1
+#endif
+// Charger sense on PIN_CHARGE_SENSE: wired 2026-10-28. Reads low
+// (internal pull-down) without the wire, so turning it on early is harmless.
+#ifndef FEATURE_CHARGE_SENSE
+#define FEATURE_CHARGE_SENSE 1
 #endif
 #ifndef FEATURE_WIFI
 #define FEATURE_WIFI 0
 #endif
 #ifndef FEATURE_BLE
 #define FEATURE_BLE 0
+#endif
+// BIT, the desk robot, over ESP-NOW (link/buddy.h): throw it things, play it at
+// Pong. The radio only wakes to send unless a BIT screen is up.
+#ifndef FEATURE_BUDDY
+#define FEATURE_BUDDY 1
+#endif
+
+// Updating over WiFi (net/update.h): Settings > UPDATE makes a WiFi of its own
+// to upload a new .bin to. Off until chosen.
+#ifndef FEATURE_UPDATE
+#define FEATURE_UPDATE 1
 #endif
 
 // ---------------------------------------------------------------------------
@@ -197,8 +214,7 @@
 // Power policy
 // ---------------------------------------------------------------------------
 // Contrast 0-255. The panel's current scales with it; faces are readable at
-// very low values indoors.
-#define CONTRAST_DAY 0x30
+// very low values indoors. Awake, the menu's brightness picks it (app_contrast).
 #define CONTRAST_NIGHT 0x01
 #define CONTRAST_LOWBAT 0x01
 
@@ -211,20 +227,29 @@
 #define BURNIN_SHIFT_MS (3UL * 60UL * 1000UL)
 #define BURNIN_MAX_SHIFT_PX 2
 
-// Night mode stub. There is no wall clock yet, so night is a repeating cycle
-// of uptime: NIGHT_CYCLE_AWAKE_MS awake, then NIGHT_CYCLE_NIGHT_MS of night.
-// Any input event ends the current night early. Set NIGHT_CYCLE_NIGHT_MS to 0
-// to disable. TODO: replace with real time (BLE/WiFi time sync or an RTC).
-#define NIGHT_CYCLE_AWAKE_MS (30UL * 60UL * 1000UL)
-#define NIGHT_CYCLE_NIGHT_MS (10UL * 60UL * 1000UL)
+// Sleep. There is no wall clock, so "night" is nobody touching it: after
+// SLEEP_AFTER_MS without input it dozes off (dim, eyes shut, deaf). Any input
+// wakes it, and so does picking it up (a move of WAKE_MOVE_MG between two
+// accelerometer samples). Lying face down (screen frame z below FACEDOWN_MG
+// for FACEDOWN_HOLD_MS) turns the screen off as well; lifting it wakes it.
+// Face-down needs the calibration (Settings > Calibrate).
+#define SLEEP_AFTER_MS (10UL * 60UL * 1000UL)
+#define WAKE_MOVE_MG 300
+#define FACEDOWN_MG (-750)
+#define FACEDOWN_EXIT_MG (-450)
+#define FACEDOWN_HOLD_MS 1500
 
 // Battery (only used with FEATURE_BATTERY_ADC).
 #define BATTERY_SAMPLE_MS (30UL * 1000UL)
-#define BATTERY_DIVIDER_RATIO 2  // 1M over 1M
+#define BATTERY_DIVIDER_RATIO 2  // 5.1k over 5.1k
+// Above this the 5V pin is fed by USB, not the cell. USB reads ~5470 here and
+// with the ADC and resistor error a full cell can read above 4450 (it did).
+#define BATTERY_MV_USB 5000
 #define BATTERY_MV_EMPTY 3300    // what we call 0 %; DW01 cuts off ~2.4 V
 #define BATTERY_MV_FULL 4150
 #define BATTERY_MV_LOW 3500      // show the icon as low
 #define BATTERY_MV_CRITICAL 3350 // show the low-battery face and deep sleep
+#define CHARGE_DEBOUNCE_MS 300  // the charger cable must stay in (or out) this long to count
 
 // How long the low-battery face stays up before the device deep-sleeps.
 #define LOWBAT_FACE_MS 4000

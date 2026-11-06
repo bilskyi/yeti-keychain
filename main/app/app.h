@@ -1,20 +1,22 @@
 // The menu and the games: everything that takes over the screen from the face.
 //
 // Pure C, no ESP-IDF (host-tested, like the face). The hardware comes in
-// through app_env_t: sounds, saving the best scores, muting, tilt. Time comes
-// in as a millisecond counter; randomness from a seeded generator.
+// through app_env_t: sounds, saving, volume, brightness, tilt, the mic. Time
+// comes in as a millisecond counter; randomness from a seeded generator.
 //
-// Controls, the same on every screen:
-//   face:  A pets it, B opens the menu (main.c)
-//   menu:  A chooses, B goes to the next item; every list ends in a way back
-//   game:  A plays (each game says how), B back to the menu
-// No long presses are needed anywhere; B long is a shortcut back to the face.
-// A hint line at the bottom of each screen says what A and B do there.
+// Three buttons, left to right A, B, C, and one rule for each on every screen:
+//   A  do it: choose, change a setting, play (each game says how)
+//   B  next: the next item, the next song; a second action in some games
+//   C  back: one step toward the face. Held: straight home to the face.
+// On the face (main.c): A pets it, B opens the games, C the status card with
+// the settings behind it, and holding B opens the music. No categories to
+// go through: each is one press from the face.
+// The bottom line of every screen says what each button does, each word
+// above its own button.
 //
-// The menu has two lists: the top one (feed, games, stats, sleep, sound,
-// setup, back) and the games list it opens.
-// The menu closes itself after APP_MENU_IDLE_MS, a game after APP_GAME_IDLE_MS
-// without input, so a static screen never sits there burning in.
+// The games list opens on the last game played. A list closes itself after
+// APP_MENU_IDLE_MS, a game after APP_GAME_IDLE_MS without input, so a static
+// screen never burns in.
 
 #pragma once
 
@@ -23,11 +25,16 @@
 
 #include "display/gfx.h"
 #include "face/rng.h"
+#include "app/music_viz.h"
 #include "input/input_event.h"
-#include "pet/pet.h"
+#include "link/bitlink.h"
+#include "link/pong.h"
 
 #define APP_MENU_IDLE_MS 15000
 #define APP_GAME_IDLE_MS 30000
+
+#define APP_VOLUME_LEVELS 4      // off, low, medium, high
+#define APP_BRIGHTNESS_LEVELS 3  // low, medium, high
 
 typedef enum {
     SND_MOVE,    // menu: next item
@@ -35,23 +42,17 @@ typedef enum {
     SND_BACK,
     SND_ROLL,    // dice rattling
     SND_DING,    // dice landed
-    SND_COIN,    // coin landed
     SND_GO,      // reaction: now!
     SND_FAIL,    // too soon, hit, crash
     SND_POINT,
     SND_FLAP,
     SND_OVER,
     SND_RECORD,  // new best score
-    SND_EAT,     // chomp
-    SND_LEVELUP,
-    SND_TONE_L,  // memory: left eye
-    SND_TONE_R,  // memory: right eye
     SND_HI,      // picked up
     SND_SCARED,  // upside down
     SND_WHEE,    // falling / thrown
     SND_SNEEZE,
     SND_HUM,
-    SND_ALARM,   // siren: it needs something
     SND_GLITCH,  // garbled chirps
     SND_HMPH,    // offended (shaken quiet mid-song)
     SND_PURR,    // petted (repeats while the touch is held)
@@ -69,8 +70,15 @@ typedef enum {
     SND_BUZZ,       // a fly
     SND_TWINKLE,    // snow
     SND_ROFL,       // rolling with laughter
-    SND_WIND,       // blown on: a whoosh
     SND_STRETCH,    // waking up: mmmm-ah
+    SND_JUMP,       // voice game: a hop
+    SND_CHARGE,     // charger plugged in: powering up
+    SND_UNPLUG,     // charger pulled out
+    SND_EGG_RISE,   // the 67 easter egg: charging up
+    SND_EGG_SIX,    // ...the 6 slams in
+    SND_EGG_SEVEN,  // ...the 7 slams in
+    SND_EGG_TICK,   // ...each swing of the hands
+    SND_EGG_BOOM,   // ...it blows up
     SND_COUNT
 } app_sound_t;
 
@@ -80,43 +88,85 @@ typedef struct {
     uint16_t catch_pts;    // best scores
     uint16_t flappy_pts;
     uint16_t snake_pts;
-    uint16_t memory_pts;
-    uint8_t muted;
-    int8_t orient[3];  // accelerometer calibration (input/orient.h), 0 = none
-    pet_t pet;
+    uint16_t voice_pts;
+    uint16_t maze_pts;
+    uint8_t volume;      // 0 = off .. APP_VOLUME_LEVELS - 1
+    uint8_t brightness;  // 0 .. APP_BRIGHTNESS_LEVELS - 1
+    int8_t orient[3];    // accelerometer calibration (input/orient.h), 0 = none
 } app_save_t;
+
+// A first boot: medium volume and brightness.
+#define APP_SAVE_DEFAULTS {.volume = 2, .brightness = 1}
+
+// An update over WiFi (net/update.h), as the UPDATE screen shows it.
+typedef enum {
+    APP_UPD_OFF = 0,
+    APP_UPD_WAITING,    // the WiFi is up; nobody on it
+    APP_UPD_JOINED,     // a phone or laptop joined it
+    APP_UPD_RECEIVING,  // a file is coming in
+    APP_UPD_DONE,       // written and verified: restarting into it
+    APP_UPD_FAILED,     // `why` says what
+} app_upd_phase_t;
+
+typedef struct {
+    uint8_t phase;  // an app_upd_phase_t
+    uint8_t pct;    // APP_UPD_RECEIVING
+    char ssid[16];
+    char pass[12];
+    char addr[16];
+    const char *why;  // APP_UPD_FAILED, short, upper case
+} app_update_t;
 
 typedef struct {
     void (*play)(app_sound_t s);
-    void (*save)(const app_save_t *s);  // a best score, a setting or the pet changed
-    void (*mute)(bool muted);
+    void (*save)(const app_save_t *s);  // a best score or a setting changed
+    void (*volume)(int level);          // apply a new volume, 0 = off
+    void (*brightness)(int level);      // apply a new brightness
     bool (*tilt)(int *mg);  // left-right tilt in mg, + = right; false = no sensor
+    bool (*tilt_xy)(int mg[2]);  // downhill in the screen's plane, mg: [0] + = right, [1] + = down
     bool (*accel)(int mg[3]);              // raw board-axis sample, for calibration
     void (*orient)(const int8_t map[3]);  // apply a new calibration
-    bool (*song)(int i);                  // play song i (sound/rtttl.h); false = muted
+    bool (*song)(int i);                  // play song i (sound/rtttl.h); false = sound off
     void (*song_stop)(void);
     bool (*song_playing)(void);
+    int (*loudness)(void);        // the mic now, 0-100; -1 = no mic
+    bool (*battery)(int *pct);    // false = no battery (on USB)
+    int (*battery_mv)(void);      // the last reading, mV; -1 = none
+    bool (*charging)(void);       // the charger's cable is in
+    // BIT, over the radio (link/buddy.h). Any of these may be NULL: no radio.
+    bool (*link_send)(const bl_msg_t *m, bool reliable);
+    int (*link_status)(void);          // an app_link_t
+    uint32_t (*link_heard_at)(void);   // when BIT was last heard, ms; 0 never
+    // An update over WiFi (net/update.h). NULL: no such thing on this build.
+    bool (*update_begin)(void);
+    void (*update_end)(void);
+    void (*update_status)(app_update_t *u);
 } app_env_t;
 
+// How things stand with BIT (link/buddy.h's buddy_status_t, in the app's words).
+typedef enum { APP_LINK_OFF = 0, APP_LINK_SEARCHING, APP_LINK_AWAY, APP_LINK_NEAR } app_link_t;
+
 typedef enum {
-    // Top list
-    ITEM_FEED,
-    ITEM_GAMES,
-    ITEM_STATS,
-    ITEM_SLEEP,
-    ITEM_SOUND,
-    ITEM_SETUP,
-    ITEM_BACK,
-    // Games list
+    // Games (B on the face)
     ITEM_DICE,
-    ITEM_COIN,
     ITEM_REACTION,
     ITEM_CATCH,
+    ITEM_MAZE,
     ITEM_FLAPPY,
     ITEM_SNAKE,
-    ITEM_MEMORY,
+    ITEM_VOICE,
+    ITEM_BIT,   // throw BIT something
+    ITEM_PONG,  // Pong against BIT, across both screens
+    // Status and settings (C on the face)
+    ITEM_STATUS,
+    ITEM_VOLUME,
+    ITEM_BRIGHTNESS,
+    ITEM_SETUP,
+    ITEM_UPDATE,  // a new firmware over WiFi
+    // The jukebox (B held on the face)
     ITEM_MUSIC,
-    ITEM_UP,  // back to the top list
+    // The easter egg: six taps on A, then a shake (app_egg_watch)
+    ITEM_EGG,
     ITEM_COUNT
 } app_item_t;
 
@@ -131,12 +181,6 @@ typedef struct {
     int shown;  // the face drawn right now (flips while rolling)
     uint32_t next_flip;
 } dice_t;
-
-typedef struct {
-    enum { COIN_IDLE, COIN_FLIP, COIN_SHOWN } phase;
-    uint32_t t0;
-    bool heads;
-} coin_t;
 
 typedef struct {
     enum { RX_READY, RX_WAIT, RX_GO, RX_RESULT, RX_EARLY, RX_SLOW } phase;
@@ -191,32 +235,68 @@ typedef struct {
     int score;
     uint32_t next_step, t0;
     bool best;
-    bool swallow_b;  // B went down as a turn: its SHORT is not "back"
 } snake_t;
 
-#define MEMORY_MAX 32
+#define VOICE_ROCKS 3
 
 typedef struct {
-    enum { MEM_START, MEM_SHOW, MEM_INPUT, MEM_GOOD, MEM_OVER } phase;
-    uint8_t seq[MEMORY_MAX];  // 0 = left (A), 1 = right (B)
-    int len;   // current round's length
-    int pos;   // showing / expecting this step
-    int lit;   // eye lit right now: -1 none, 0 left, 1 right
-    uint32_t t0, lit_until;
+    enum { VOICE_START, VOICE_PLAY, VOICE_OVER } phase;
+    int y, vy;  // the Yeti's feet above the ground, 1/16 px; up is +
+    struct {
+        int x;  // left edge, 1/16 px
+        int h;  // height, px
+        bool passed;
+    } rock[VOICE_ROCKS];
     int score;
-    bool best;
-    bool swallow_b;
-} memory_t;
+    int level;  // the mic's last loudness, 0-100, for the meter
+    uint32_t last, acc, t0;
+    bool best, no_mic;
+} voice_t;
 
-// Care screens: feeding, the stats page, calibration.
-#define FOOD_KINDS 3  // plus a BACK choice
+#define MAZE_COLS 15  // at the smallest cell size
+#define MAZE_ROWS 7
 
 typedef struct {
-    enum { FEED_PICK, FEED_EAT, FEED_YUM, FEED_FULL } phase;
-    int choice;  // 0..FOOD_KINDS-1, FOOD_KINDS = back
-    int bites;   // FEED_EAT: bites taken so far
+    enum { MAZE_START, MAZE_PLAY, MAZE_SOLVED, MAZE_OVER } phase;
+    uint8_t walls[MAZE_ROWS][MAZE_COLS];  // per cell: right and bottom wall bits
+    int cols, rows, cell, ox, oy;         // this maze's grid and where it is drawn
+    int goal;                             // cell index, row * cols + col
+    int x, y, vx, vy;  // the ball: 1/16 px, 1/16 px per second
+    int base[2];       // the tilt when the run began: that counts as level
+    int level, score;
+    int left_ms;
+    uint32_t last, t0;
+    bool best;
+} maze_t;
+
+typedef struct {
+    enum { TOSS_AIM, TOSS_FLYING, TOSS_WAIT, TOSS_RESULT } phase;
+    int item;          // a bl_item_t
+    uint32_t t0;       // the phase began
+    uint8_t result;    // TOSS_RESULT: a bl_caught_t, or TOSS_MISSED / TOSS_NO_BIT
+    bool delivered;    // BIT's radio took it
+} toss_t;
+
+#define TOSS_MISSED 0x80
+#define TOSS_NO_BIT 0x81
+
+typedef struct {
+    enum { PK_TITLE, PK_ASKING, PK_NO, PK_PLAY, PK_OVER } phase;
     uint32_t t0;
-} feed_t;
+    uint8_t why;      // PK_NO: a bl_no_t, or 0 BIT never heard, TOSS_NO_BIT none known
+    uint8_t end;      // PK_OVER: a pong_end_t, or PK_I_QUIT
+    pong_t pong;
+    uint32_t next_alive;
+    uint32_t point_at;  // the last point, for the score flash; 0 none
+    bool point_mine;
+} pongk_t;
+
+#define PK_I_QUIT 0x10
+
+typedef struct {
+    uint32_t t0;   // opened, or the last sign of anyone using it
+    bool started;  // the WiFi came up
+} upd_t;
 
 typedef struct {
     enum { SETUP_FLAT, SETUP_UPRIGHT, SETUP_DONE, SETUP_FAIL } phase;
@@ -225,69 +305,91 @@ typedef struct {
 } setup_t;
 
 typedef struct {
-    int song;  // songs_count() = BACK
+    int song;
     bool playing;
-    uint32_t t0;
+    uint32_t t0;         // the song started
+    uint32_t last;       // the last update: the animation's clock
+    int next;            // the next entry of the track to start...
+    uint32_t next_at;    // ...and when, ms into the song
+    uint32_t msg_until;  // "SOUND OFF" shows until then
+    viz_t viz;
+    viz_track_t track;
 } music_t;
+
+#define EGG_MS 7200
+
+typedef struct {
+    uint32_t t0;
+    uint32_t cued;  // the sounds played so far, a bit each
+} egg_t;
 
 typedef struct {
     app_mode_t mode;
     app_item_t item;  // selected in the menu / running
-    int list;         // menu list showing: 0 top, 1 games
+    int list;         // menu list showing: 0 games, 1 status and settings
+    app_item_t last_game;  // the games list opens on it
+    int last_song;         // the jukebox starts on it
+    int last_viz;          // the last song's animation: the next one is different, -1 = none yet
+    int egg_taps;          // A presses in a row on the face, toward the easter egg
+    uint32_t egg_at;       // the last one
     const app_env_t *env;
     app_save_t save;
     rng_t rng;
-    bool has_tilt;  // Catch is only offered with an accelerometer
+    bool has_tilt;  // Catch, Maze and calibration need the accelerometer
 
     uint32_t now;
     uint32_t last_input;
     app_item_t slide_from;  // menu slide animation
     uint32_t slide_t0;
+    int slide_dir;          // +1 to the next item, -1 back up a level
     bool sliding;
 
     int mood;  // expression for the face when the app closes, -1 = none
-    bool want_sleep;  // SLEEP was chosen: main puts the face to bed
-
-    uint32_t pet_acc;     // ms toward the next pet minute
-    uint32_t pet_last;    // last app_tick() time
-    int pet_unsaved;      // pet minutes since the last save
-    uint32_t levelup_t0;  // "LEVEL UP!" banner, while recent
-    bool levelup;
 
     union {
         dice_t dice;
-        coin_t coin;
         reaction_t rx;
         catch_t ctch;
+        maze_t maze;
         flappy_t fl;
         snake_t snake;
-        memory_t mem;
-        feed_t feed;
+        voice_t voice;
         setup_t setup;
+        toss_t toss;
+        pongk_t pong;
+        upd_t upd;
         music_t music;
+        egg_t egg;
     } g;
 } app_t;
 
 void app_init(app_t *a, const app_env_t *env, const app_save_t *save, uint32_t seed);
 
 bool app_active(const app_t *a);
-void app_open(app_t *a, uint32_t now);   // show the menu
+void app_open_games(app_t *a, uint32_t now);     // the games list, on the last game played
+void app_open_settings(app_t *a, uint32_t now);  // the status card, settings after it
+void app_open_music(app_t *a, uint32_t now);     // the jukebox, on the last song
+// Every event on the face goes through here first: six quick presses of A,
+// then a shake, open the 67 easter egg. True when it fired (the shake is
+// used up); the presses still pet the face as usual.
+bool app_egg_watch(app_t *a, input_event_t ev, uint32_t now);
 void app_close(app_t *a);                // back to the face
 
 void app_on_event(app_t *a, input_event_t ev, uint32_t now);
 void app_update(app_t *a, uint32_t now);
 void app_render(const app_t *a, gfx_t *g);
 bool app_is_animating(const app_t *a);
+bool app_wants_mic(const app_t *a);  // the voice game is listening
+// A BIT screen is up: keep the radio listening for it (link/buddy.h).
+bool app_wants_link(const app_t *a);
+// A frame from BIT, and the fate of one sent to it reliably.
+void app_on_link(app_t *a, const bl_msg_t *m, uint32_t now);
+void app_on_link_done(app_t *a, const bl_msg_t *m, bool delivered, uint32_t now);
 
 // The face's reaction to how the app went (EXPR_*), once; -1 when none.
 int app_take_mood(app_t *a);
-// SLEEP was chosen in the menu (once).
-bool app_take_sleep(app_t *a);
-
-// Every frame, menu open or not: the pet's clock. Saves now and then.
-void app_tick(app_t *a, uint32_t now, bool asleep);
-// Input that reached the face (petting, poking, shaking), for the pet.
-void app_face_event(app_t *a, input_event_t ev);
-uint8_t app_needs(const app_t *a);  // PET_NEED_* bits
 
 const char *app_item_name(app_item_t it);
+
+// Display contrast for a brightness level (main.c applies it).
+uint8_t app_contrast(int brightness);

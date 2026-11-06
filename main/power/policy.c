@@ -2,53 +2,56 @@
 
 #include "config.h"
 
-void policy_init(policy_t *p) {
+void policy_init(policy_t *p, uint64_t now_ms) {
     *p = (policy_t){0};
-}
-
-// Night-mode stub: night is the tail of a repeating uptime cycle until there
-// is a real clock (see config.h).
-static bool scheduled_night(uint64_t now_ms, uint64_t *cycle) {
-    const uint64_t len = (uint64_t)NIGHT_CYCLE_AWAKE_MS + NIGHT_CYCLE_NIGHT_MS;
-    if (NIGHT_CYCLE_NIGHT_MS == 0 || len == 0) {
-        *cycle = 0;
-        return false;
-    }
-    *cycle = now_ms / len;
-    return now_ms % len >= NIGHT_CYCLE_AWAKE_MS;
+    p->last_activity = now_ms;
 }
 
 void policy_note_activity(policy_t *p, uint64_t now_ms) {
-    uint64_t cycle;
-    p->forced = false;
-    if (scheduled_night(now_ms, &cycle)) {
-        p->woken = true;
-        p->woken_cycle = cycle;
-    }
+    p->last_activity = now_ms;
 }
 
 void policy_on_event(policy_t *p, input_event_t ev, uint64_t now_ms) {
-    (void)ev;  // any input wakes it; going to sleep is the menu's SLEEP
+    (void)ev;  // any input wakes it
     policy_note_activity(p, now_ms);
 }
 
-void policy_sleep(policy_t *p) {
-    p->forced = true;
+void policy_feel(policy_t *p, const int mg[3], bool oriented, uint64_t now_ms) {
+    int delta = 0;
+    for (int i = 0; i < 3; i++) {
+        if (p->has_prev) delta += mg[i] > p->prev_mg[i] ? mg[i] - p->prev_mg[i] : p->prev_mg[i] - mg[i];
+        p->prev_mg[i] = mg[i];
+    }
+    const bool moved = p->has_prev && delta >= WAKE_MOVE_MG;
+    p->has_prev = true;
+
+    if (oriented && mg[2] < FACEDOWN_MG) {
+        if (p->down_since == 0) p->down_since = now_ms ? now_ms : 1;
+        if (now_ms - p->down_since >= FACEDOWN_HOLD_MS) p->face_down = true;
+    } else if (!oriented || mg[2] > FACEDOWN_EXIT_MG) {
+        if (p->face_down) policy_note_activity(p, now_ms);  // lifted: wake up
+        p->face_down = false;
+        p->down_since = 0;
+    }
+    // Picked up while dozing (not just lying there): wake up.
+    if (moved && !p->face_down) policy_note_activity(p, now_ms);
 }
 
 bool policy_update(policy_t *p, uint64_t now_ms) {
-    uint64_t cycle;
-    const bool sched = scheduled_night(now_ms, &cycle);
-    if (p->woken && cycle != p->woken_cycle) p->woken = false;
-
-    const bool night = p->forced || (sched && !p->woken);
+    // Activity can be stamped a little after the frame's own `now`.
+    const bool idle = now_ms > p->last_activity && now_ms - p->last_activity >= SLEEP_AFTER_MS;
+    const bool night = p->face_down || idle;
     const bool changed = night != p->night;
     p->night = night;
     return changed;
 }
 
-uint8_t policy_contrast(const policy_t *p) {
-    return p->night ? CONTRAST_NIGHT : CONTRAST_DAY;
+bool policy_screen_off(const policy_t *p) {
+    return p->face_down;
+}
+
+uint8_t policy_contrast(const policy_t *p, uint8_t day) {
+    return p->night ? CONTRAST_NIGHT : day;
 }
 
 void policy_burnin_offset(uint64_t now_ms, int *dx, int *dy) {

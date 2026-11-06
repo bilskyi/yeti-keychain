@@ -67,18 +67,17 @@ void snake_start(app_t *a, uint32_t now) {
 
 bool snake_event(app_t *a, input_event_t ev, uint32_t now) {
     snake_t *s = &a->g.snake;
-    if (ev == INPUT_BTN_A_SHORT || ev == INPUT_BTN_A_LONG) return true;
-    if (ev == INPUT_BTN_B_SHORT && s->swallow_b) {
-        s->swallow_b = false;
+    // The releases of A and B: their presses did the work.
+    if (ev == INPUT_BTN_A_SHORT || ev == INPUT_BTN_A_LONG || ev == INPUT_BTN_B_SHORT ||
+        ev == INPUT_BTN_B_LONG) {
         return true;
     }
     if (s->phase != SNAKE_PLAY) {
-        if (ev != INPUT_BTN_A_PRESS) return false;  // B goes back to the menu
+        if (ev != INPUT_BTN_A_PRESS) return false;  // C goes back to the menu
         if (s->phase == SNAKE_START || app_elapsed(now, s->t0, 800)) begin(a, now);
         return true;
     }
     if (ev != INPUT_BTN_A_PRESS && ev != INPUT_BTN_B_PRESS) return false;
-    if (ev == INPUT_BTN_B_PRESS) s->swallow_b = true;
     if (s->nturns < 2) s->turns[s->nturns++] = ev == INPUT_BTN_A_PRESS ? -1 : 1;
     return true;
 }
@@ -90,7 +89,6 @@ static void die(app_t *a, uint32_t now) {
     s->best = app_record(a, &a->save.snake_pts, (uint16_t)s->score, false);
     a->mood = s->best ? EXPR_EXCITED : EXPR_KO;
     app_play(a, s->best ? SND_RECORD : SND_FAIL);
-    app_reward(a, 4 + (s->score > 16 ? 16 : s->score), 3, 2 + s->score);
 }
 
 static void step(app_t *a, uint32_t now) {
@@ -135,10 +133,10 @@ void snake_render(const app_t *a, gfx_t *g) {
     const snake_t *s = &a->g.snake;
     if (s->phase == SNAKE_START) {
         font_draw_centered(g, 64, 4, "SNAKE", 2, GFX_WHITE);
-        font_draw_centered(g, 64, 24, "A: LEFT  B: RIGHT", 1, GFX_WHITE);
+        font_draw_centered(g, 64, 24, "A LEFT   B RIGHT", 1, GFX_WHITE);
         for (int i = 0; i < 6; i++) gfx_fill_rect(g, 40 + i * 6, 38, 5, 5, GFX_WHITE);
         gfx_fill_circle(g, 88, 40, 2, GFX_WHITE);
-        app_hint(g, "A:START", "B:BACK");
+        app_hint(g, "START", NULL, "BACK");
         return;
     }
     if (s->phase == SNAKE_OVER) {

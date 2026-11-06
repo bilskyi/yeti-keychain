@@ -6,7 +6,7 @@
 #include <stdint.h>
 
 typedef enum {
-    BATTERY_UNKNOWN = 0,  // no ADC fitted (FEATURE_BATTERY_ADC off) or read failed
+    BATTERY_UNKNOWN = 0,  // no ADC fitted (FEATURE_BATTERY_ADC off), read failed, or on USB
     BATTERY_OK,
     BATTERY_LOW,
     BATTERY_CRITICAL,

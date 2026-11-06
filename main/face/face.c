@@ -66,7 +66,6 @@
 #define FLY_OFF_AT 4600    // ...and takes off
 #define SNOW_MS 6000
 #define SNOW_FLAKES 14
-#define BLOWN_MS 1300
 #define STRETCH_MS 2200
 #define ROLL_MS 1800
 #define GIGGLE_AGAIN_MS 4000  // tickled again within this of a laugh: it rolls
@@ -101,10 +100,6 @@
 #define FALL_MG 350           // |a| below this: falling (weightless)
 #define WHEE_COOLDOWN_MS 3000
 
-// Thought bubble: shown for BUBBLE_ON_S out of every BUBBLE_EVERY_S seconds
-// while the pet needs something.
-#define BUBBLE_EVERY_S 15
-#define BUBBLE_ON_S 4
 
 static const char *const NAMES[EXPR_COUNT] = {
     "neutral", "happy", "sleepy", "surprised", "angry", "love", "sad",
@@ -377,7 +372,6 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
             face_look(f, -GLANCE_X, 0, now, 2000);
             break;
         case INPUT_TILT_RIGHT:
-        case INPUT_BTN_C_SHORT:
             face_look(f, GLANCE_X, 0, now, 2000);
             break;
         case INPUT_BTN_A_SHORT:
@@ -393,15 +387,6 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
             if (e == EXPR_WINK) then(f, EXPR_HAPPY);
             break;
         }
-        case INPUT_BTN_B_LONG: {
-            // B held: step through every face (hidden; B opens the menu).
-            const expression_t next = (expression_t)((showing(f) + 1) % EXPR_LOWBAT);
-            react(f, next, now, 8000);
-            break;
-        }
-        case INPUT_BTN_C_LONG:
-            react(f, EXPR_HAPPY, now, 3000);
-            break;
         case INPUT_TOUCH:  // a pat on the head; laughing, it just laughs on
             if (face_laughing(f)) {
                 if (f->fx != FX_ROLL && (int32_t)(now + LAUGH_ON_MS - f->expr_until) > 0) {
@@ -450,25 +435,6 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
             f->giggled_at = now;
             break;
         }
-        case INPUT_CLAP:  // startled, then fine
-            react(f, EXPR_SURPRISED, now, TRANSITION_HOLD_MS);
-            then(f, EXPR_HAPPY);
-            break;
-        case INPUT_DOUBLE_CLAP:  // party: main.c starts a song
-            react(f, EXPR_EXCITED, now, 2500);
-            break;
-        case INPUT_LOUD:  // shouted at
-            react(f, EXPR_SCARED, now, SCARED_HOLD_MS);
-            then(f, EXPR_SAD);
-            f->cue = CUE_SCARED;
-            break;
-        case INPUT_BLOW:  // squints into the draught, then it makes it sneeze
-            react(f, EXPR_NEUTRAL, now, BLOWN_MS + SNEEZE_MS + 1500);
-            f->idle = IDLE_BLOWN;
-            f->idle_start = now;
-            f->idle_dir = rng_chance(&f->rng, 50) ? 1 : -1;
-            f->cue = CUE_WIND;
-            break;
         case INPUT_HEAR:  // someone is talking: wide eyes, looking up at them
             react(f, EXPR_SURPRISED, now, LISTEN_MAX_MS);
             face_look(f, 0, -GLANCE_Y, now, LISTEN_MAX_MS);
@@ -477,7 +443,14 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
             face_look(f, 0, 0, now, 0);
             react(f, EXPR_HAPPY, now, 3000);
             break;
-        case INPUT_BTN_B_SHORT:  // opens the menu (main.c)
+        case INPUT_BTN_B_SHORT:  // opens the games (main.c)
+        case INPUT_BTN_B_LONG:   // the music (main.c)
+        case INPUT_BTN_C_SHORT:  // the status card (main.c)
+        case INPUT_BTN_C_LONG:
+        case INPUT_CLAP:  // the mic only reports talking (mic.c)
+        case INPUT_DOUBLE_CLAP:
+        case INPUT_LOUD:
+        case INPUT_BLOW:
         case INPUT_BTN_A_PRESS:
         case INPUT_BTN_B_PRESS:
         case INPUT_BTN_C_PRESS:
@@ -485,10 +458,6 @@ void face_on_event(face_t *f, input_event_t ev, uint32_t now) {
         case INPUT_EVENT_COUNT:
             break;
     }
-}
-
-void face_set_needs(face_t *f, uint8_t needs) {
-    f->needs = needs;
 }
 
 void face_fx(face_t *f, face_fx_t fx, const char *text, uint32_t now, uint32_t ms) {
@@ -500,9 +469,6 @@ void face_fx(face_t *f, face_fx_t fx, const char *text, uint32_t now, uint32_t m
     f->last_input = now;
     // The expression underneath, and what follows.
     switch (fx) {
-        case FX_ALARM:
-            react(f, EXPR_SAD, now, ms + 2000);
-            break;
         case FX_GLITCH:
             react(f, EXPR_DIZZY, now, ms);
             then(f, EXPR_SURPRISED);  // "...what was that?"
@@ -561,7 +527,6 @@ void face_start_idle(face_t *f, idle_kind_t kind, uint32_t now) {
     f->idle = kind;
     f->idle_start = now;
     f->idle_mark = false;
-    f->idle_dir = 1;
     switch (kind) {
         case IDLE_FLY: f->cue = CUE_BUZZ; break;
         case IDLE_SNOW:
@@ -570,7 +535,6 @@ void face_start_idle(face_t *f, idle_kind_t kind, uint32_t now) {
             break;
         case IDLE_SNEEZE: f->cue = CUE_SNEEZE; break;
         case IDLE_HUM: f->cue = CUE_HUM; break;
-        case IDLE_BLOWN: f->cue = CUE_WIND; break;
         case IDLE_STRETCH: f->cue = CUE_STRETCH; break;
         case IDLE_GLANCE:
         case IDLE_YAWN:
@@ -695,9 +659,7 @@ static int ease_toward(int cur, int target) {
 }
 
 static void start_idle(face_t *f, uint32_t now) {
-    const bool yawn = f->expr == EXPR_SLEEPY || (f->needs & PET_NEED_SLEEP)
-                          ? rng_chance(&f->rng, 50)
-                          : rng_chance(&f->rng, 12);
+    const bool yawn = f->expr == EXPR_SLEEPY ? rng_chance(&f->rng, 50) : rng_chance(&f->rng, 12);
     if (yawn) {
         f->idle = IDLE_YAWN;
         f->idle_start = now;
@@ -718,7 +680,7 @@ static void start_idle(face_t *f, uint32_t now) {
         return;
     }
     const bool cheerful = f->expr == EXPR_HAPPY || f->expr == EXPR_NEUTRAL || f->expr == EXPR_LOVE;
-    if (cheerful && !f->needs && rng_chance(&f->rng, 15)) {
+    if (cheerful && rng_chance(&f->rng, 15)) {
         f->idle = IDLE_HUM;
         f->idle_start = now;
         f->cue = CUE_HUM;
@@ -775,7 +737,6 @@ void face_update(face_t *f, uint32_t now) {
             const mood_ctx_t ctx = {
                 .night = f->night,
                 .ms_since_input = now - f->last_input,
-                .needs = f->needs,
             };
             uint32_t hold;
             const expression_t next = mood_pick(&f->rng, f->expr, &ctx, &hold);
@@ -859,17 +820,6 @@ void face_update(face_t *f, uint32_t now) {
                     f->idle = IDLE_NONE;
                     schedule_idle(f, now);
                 }
-            }
-            break;
-        }
-        case IDLE_BLOWN: {  // pushed aside by the wind, shaking in it; then the sneeze
-            const uint32_t t = now - f->idle_start;
-            face_look(f, f->idle_dir * GLANCE_X + (int)(now / 40 % 3) - 1, (int)(now / 60 % 2), now, 300);
-            if (t >= BLOWN_MS) {
-                face_look(f, 0, 0, now, 0);
-                f->idle = IDLE_SNEEZE;
-                f->idle_start = now;
-                f->cue = CUE_SNEEZE;
             }
             break;
         }
@@ -959,8 +909,6 @@ static int openness(const face_t *f) {
     }
     // A yawn squeezes the eyes most of the way shut.
     open = open * (256 - yawn_amount(f) * 3 / 4) / 256;
-    // Squinting into the wind.
-    if (f->idle == IDLE_BLOWN) open = open * 110 / 256;
     // So does the "ah... ah..." before a sneeze.
     if (f->idle == IDLE_SNEEZE) {
         const int t = (int)(f->now - f->idle_start);
@@ -1077,29 +1025,6 @@ static void draw_note(gfx_t *g, int x, int y) {  // a quaver
     gfx_line(g, x + 2, y - 7, x + 5, y - 4, GFX_WHITE);
 }
 
-// Thought bubble in the top right corner with what the pet wants. It sits
-// over the corner of the right eye, so it gets a black outline first.
-static void draw_bubble(gfx_t *g, uint8_t needs) {
-    gfx_fill_circle(g, 104, 19, 3, GFX_BLACK);
-    gfx_fill_circle(g, 108, 15, 4, GFX_BLACK);
-    gfx_fill_rrect(g, 106, 0, 22, 17, 6, GFX_BLACK);
-    gfx_fill_circle(g, 104, 19, 1, GFX_WHITE);
-    gfx_fill_circle(g, 108, 15, 2, GFX_WHITE);
-    gfx_fill_rrect(g, 108, 2, 18, 13, 5, GFX_WHITE);
-    const int cx = 117, cy = 8;
-    if (needs & PET_NEED_FOOD) {  // a fish
-        gfx_fill_ellipse(g, cx - 2, cy, 4, 3, GFX_BLACK);
-        gfx_fill_triangle(g, cx + 1, cy, cx + 5, cy - 3, cx + 5, cy + 3, GFX_BLACK);
-    } else if (needs & PET_NEED_SLEEP) {  // a z
-        gfx_hline(g, cx - 3, cx + 3, cy - 3, GFX_BLACK);
-        gfx_line(g, cx + 3, cy - 3, cx - 3, cy + 3, GFX_BLACK);
-        gfx_hline(g, cx - 3, cx + 3, cy + 3, GFX_BLACK);
-    } else {  // a ball: wants to play
-        gfx_fill_circle(g, cx, cy, 4, GFX_BLACK);
-        gfx_hline(g, cx - 4, cx + 4, cy, GFX_WHITE);
-    }
-}
-
 // Tears the finished picture: a few bands slide sideways, some pixels flip.
 // Driven by a hash of the time so rendering stays a pure function.
 static void glitch_post(gfx_t *g, uint32_t t) {
@@ -1127,14 +1052,6 @@ static void glitch_post(gfx_t *g, uint32_t t) {
 
 static void invert(gfx_t *g) {
     for (int i = 0; i < GFX_FB_BYTES; i++) g->buf[i] = (uint8_t)~g->buf[i];
-}
-
-// Warning sign, top right: a triangle with a "!".
-static void draw_warning(gfx_t *g) {
-    gfx_fill_triangle(g, 114, 0, 100, 24, 128, 24, GFX_BLACK);  // outline over the eye
-    gfx_fill_triangle(g, 114, 3, 103, 22, 125, 22, GFX_WHITE);
-    gfx_fill_rect(g, 113, 9, 3, 7, GFX_BLACK);
-    gfx_fill_rect(g, 113, 18, 3, 2, GFX_BLACK);
 }
 
 // Singing: eyes happily shut, mouth opening on the beat, bobbing, notes.
@@ -1243,18 +1160,6 @@ static void draw_snow(gfx_t *g, uint32_t t) {
             flip_pixel(g, x + 1, y + 1);
             flip_pixel(g, x - 1, y + 1);
             flip_pixel(g, x + 1, y - 1);
-        }
-    }
-}
-
-// Gusts streaking across in the wind's direction.
-static void draw_wind(gfx_t *g, uint32_t t, int dir) {
-    for (int k = 0; k < 7; k++) {
-        const int y = 6 + k * 8 + (k % 2) * 3, len = 10 + (k * 7) % 9;
-        int x = (int)((t * (uint32_t)(220 + k * 30) / 1000 + (uint32_t)k * 41) % 170) - 20;
-        if (dir < 0) x = GFX_W - 1 - x - len;
-        for (int i = 0; i < len; i++) {
-            if ((i / 3) % 3 != 2) flip_pixel(g, x + i, y);
         }
     }
 }
@@ -1660,12 +1565,6 @@ void face_render(const face_t *f, gfx_t *g) {
         }
     }
 
-    // What it needs, now and then, while it is not busy reacting.
-    if (f->needs && !f->reacting && f->expr != EXPR_SLEEPY && f->idle == IDLE_NONE &&
-        (f->now / 1000) % BUBBLE_EVERY_S < BUBBLE_ON_S) {
-        draw_bubble(g, f->needs);
-    }
-
     if (f->idle == IDLE_FLY) {
         const uint32_t ft = f->now - f->idle_start;
         int x, y;
@@ -1673,18 +1572,12 @@ void face_render(const face_t *f, gfx_t *g) {
         draw_fly(g, x + dx, y, ft < FLY_SIT_AT || ft >= FLY_OFF_AT ? (f->now / 30) % 2 : (ft / 500) % 4 == 0);
     } else if (f->idle == IDLE_SNOW) {
         draw_snow(g, f->now - f->idle_start);
-    } else if (f->idle == IDLE_BLOWN) {
-        draw_wind(g, f->now - f->idle_start, f->idle_dir);
     }
 
     if (flash) invert(g);
 
     const uint32_t ft = f->now - f->fx_since;
-    if (f->fx == FX_ALARM) {
-        // Siren: the whole screen flashes for a second, then the sign blinks.
-        if ((ft / 250) % 2 == 0) draw_warning(g);
-        if (ft < 1200 && (ft / 150) % 2) invert(g);
-    } else if (f->fx == FX_HEARTS) {
+    if (f->fx == FX_HEARTS) {
         draw_heart_burst(g, ft);
     } else if (f->fx == FX_GLITCH) {
         glitch_post(g, ft);

@@ -1,4 +1,4 @@
-// OLED keychain companion, v0.6.
+// OLED keychain companion, v0.7.
 //
 // Boot, then one loop: input -> policy -> pet -> face -> render -> flush -> sleep.
 // The loop blocks in input_wait() between frames, which is when the C3 drops
@@ -25,6 +25,8 @@
 #include "sound/sound.h"
 #include "app/app.h"
 #include "led/led.h"
+#include "link/buddy.h"
+#include "net/update.h"
 #include "pet/story.h"
 #include "sound/rtttl.h"
 #include "storage/storage.h"
@@ -40,7 +42,10 @@ static app_save_t s_save;
 static story_t s_story;
 static bool s_singing;  // a story song is playing; shake (or any input) stops it
 static bool s_petted;   // the touch pad is held: it purrs
+static bool s_charging;  // the charger's cable is in (debounced)
 static uint32_t s_next_purr;
+static uint32_t s_bit_at;  // the last time BIT was played with (a BIT screen, a frame from it)
+#define BIT_QUIET_MS (5UL * 60UL * 1000UL)  // no glitches, songs or hangs for this long after
 
 void app_main(void);
 
@@ -54,7 +59,8 @@ static void render(uint32_t now) {
     gfx_clear(&s_gfx);
     gfx_set_offset(&s_gfx, dx, dy);
     face_render(&s_face, &s_gfx);
-    hud_battery(&s_gfx, &s_battery, now);  // shifted too: it is static, so most at risk
+    hud_battery(&s_gfx, &s_battery, s_charging, now);
+    if (s_app.save.volume == 0) hud_muted(&s_gfx);  // shifted too: it is static, so most at risk
     display_flush(&s_gfx);
 }
 
@@ -84,6 +90,29 @@ static void env_save(const app_save_t *s) {
     storage_save(s);
 }
 
+static void apply_contrast(void) {
+    display_set_contrast(policy_contrast(&s_policy, app_contrast(s_app.save.brightness)));
+}
+
+static void env_brightness(int level) {
+    (void)level;  // already in s_app.save
+    apply_contrast();
+}
+
+static bool env_battery(int *pct) {
+    if (s_battery.level == BATTERY_UNKNOWN) return false;  // no divider, or on USB
+    *pct = s_battery.percent;
+    return true;
+}
+
+static int env_battery_mv(void) {
+    return s_battery.mv;
+}
+
+static bool env_charging(void) {
+    return s_charging;
+}
+
 static bool env_tilt(int *mg) {
     int a[3];
     if (!input_accel_mg(a)) return false;
@@ -91,16 +120,51 @@ static bool env_tilt(int *mg) {
     return true;
 }
 
+// Which way a ball on the screen would roll: gravity in the screen's plane.
+// The sensor reads "up", so downhill is minus that; screen y points down.
+static bool env_tilt_xy(int mg[2]) {
+    int a[3];
+    if (!input_accel_mg(a)) return false;
+    mg[0] = -a[0];
+    mg[1] = a[1];
+    return true;
+}
+
+static int env_link_status(void) {
+    switch (buddy_status()) {
+        case BUDDY_SEARCHING: return APP_LINK_SEARCHING;
+        case BUDDY_AWAY: return APP_LINK_AWAY;
+        case BUDDY_NEAR: return APP_LINK_NEAR;
+        default: return APP_LINK_OFF;
+    }
+}
+
 static const app_env_t ENV = {
     .play = sound_fx,
     .save = env_save,
-    .mute = sound_set_muted,
+    .volume = sound_set_volume,
+    .brightness = env_brightness,
     .tilt = env_tilt,
+    .tilt_xy = env_tilt_xy,
     .accel = input_accel_raw_mg,
     .orient = input_accel_set_orient,
     .song = sound_song,
     .song_stop = sound_stop,
     .song_playing = sound_song_playing,
+    .loudness = input_mic_loudness,
+    .battery = env_battery,
+    .battery_mv = env_battery_mv,
+    .charging = env_charging,
+#if FEATURE_BUDDY
+    .link_send = buddy_send,
+    .link_status = env_link_status,
+    .link_heard_at = buddy_heard_at,
+#endif
+#if FEATURE_UPDATE
+    .update_begin = update_begin,
+    .update_end = update_end,
+    .update_status = update_status,
+#endif
 };
 
 // Each note of a song (or of its babbled answer) flashes the LED for half its length.
@@ -160,7 +224,6 @@ static void play_cue(face_cue_t cue) {
         [CUE_BUZZ] = {SND_BUZZ, -1},
         [CUE_SNOW] = {SND_TWINKLE, LED_TWINKLE},
         [CUE_ROFL] = {SND_ROFL, LED_GIGGLE},
-        [CUE_WIND] = {SND_WIND, LED_SCARED},
         [CUE_STRETCH] = {SND_STRETCH, LED_RISE},
         [CUE_JOLT] = {SND_ZAP, LED_BLINK},
         [CUE_ERROR] = {SND_ERROR, LED_DOUBLE},
@@ -176,7 +239,6 @@ static void play_cue(face_cue_t cue) {
 static void led_on_event(input_event_t ev) {
     switch (ev) {
         case INPUT_TAP:
-        case INPUT_CLAP:
         case INPUT_SHAKE:  // a second shake in a row gets the face's cue instead
         case INPUT_TOUCH_END: led_pattern(LED_BLINK); break;
         case INPUT_DOUBLE_TAP: led_pattern(LED_DOUBLE); break;
@@ -190,6 +252,7 @@ static void led_on_event(input_event_t ev) {
 
 static void on_input(input_event_t ev, uint32_t now, void *ctx) {
     (void)ctx;
+    buddy_nudge();  // picked up or pressed: is BIT about?
     if (app_active(&s_app)) {
         policy_note_activity(&s_policy, now_ms64());
         app_on_event(&s_app, ev, now);
@@ -201,19 +264,26 @@ static void on_input(input_event_t ev, uint32_t now, void *ctx) {
         face_on_event(&s_face, ev, now);
         return;
     }
-    if (stop_song(ev, now)) return;
-    if (s_face.fx == FX_ALARM) {  // seen it: hush the siren
-        led_pattern(LED_OFF);
-        face_fx_stop(&s_face);
+    if (app_egg_watch(&s_app, ev, now)) {  // six presses of A, then a shake: 67
+        ESP_LOGI(TAG, "easter egg: 67");
+        return;
     }
-    if (ev == INPUT_BTN_B_SHORT) {  // B: the menu
-        app_open(&s_app, now);
+    if (stop_song(ev, now)) return;
+    if (ev == INPUT_BTN_B_SHORT) {  // B: the games
+        app_open_games(&s_app, now);
+        return;
+    }
+    if (ev == INPUT_BTN_B_LONG) {  // B held: the music
+        app_open_music(&s_app, now);
+        return;
+    }
+    if (ev == INPUT_BTN_C_SHORT) {  // C: the status card, the settings after it
+        app_open_settings(&s_app, now);
         return;
     }
     // Taps while laughing: giggles, never cutting off the one playing.
     const bool giggling = face_laughing(&s_face) && (ev == INPUT_TOUCH || ev == INPUT_TICKLE);
     face_on_event(&s_face, ev, now);
-    app_face_event(&s_app, ev);
     if (!giggling) {
         sound_on_event(ev);
     } else if (!sound_busy()) {
@@ -232,14 +302,65 @@ static void on_input(input_event_t ev, uint32_t now, void *ctx) {
             sound_babble(input_mic_syllables());
             face_talk(&s_face, input_mic_syllables(), now);
             break;
-        case INPUT_DOUBLE_CLAP:  // clap-clap: it sings
-            if (!s_singing && sound_song((int)(esp_random() % (uint32_t)songs_count()))) {
-                s_singing = true;
-                face_fx(&s_face, FX_SING, NULL, now, 0);
-            }
-            break;
         default:
             break;
+    }
+}
+
+// The charger's cable, read every frame. A change has to hold for
+// CHARGE_DEBOUNCE_MS, so a wobbly plug is not a dozen plug-ins. Plugged in:
+// it wakes up delighted; full: pleased; pulled out: a little startled.
+static void watch_charger(uint32_t now) {
+    static bool raw_was, full_said;
+    static uint32_t raw_since;
+    const bool raw = battery_cable_in();
+    if (raw != raw_was) {
+        raw_was = raw;
+        raw_since = now;
+    }
+    if (raw == s_charging || now - raw_since < CHARGE_DEBOUNCE_MS) {
+        // No change. Full (the cell's own reading, switch on): say so once.
+        if (s_charging && !full_said && s_battery.percent >= 100) {
+            full_said = true;
+            ESP_LOGI(TAG, "charged: %d mV", s_battery.mv);
+            if (!app_active(&s_app) && !s_policy.night && !face_hung(&s_face)) {
+                face_react(&s_face, EXPR_HAPPY, now, 3000);
+                sound_fx(SND_DING);
+                led_pattern(LED_DOUBLE);
+            }
+        }
+        return;
+    }
+    s_charging = raw;
+    full_said = false;
+    ESP_LOGI(TAG, "charging cable %s", raw ? "in" : "out");
+    policy_note_activity(&s_policy, now_ms64());  // someone is handling it: wake up
+    if (app_active(&s_app) || face_hung(&s_face)) return;  // the icon and status card show it
+    if (s_singing) return;
+    face_react(&s_face, raw ? EXPR_EXCITED : EXPR_SURPRISED, now, raw ? 2500 : 1200);
+    sound_fx(raw ? SND_CHARGE : SND_UNPLUG);
+    led_pattern(raw ? LED_RISE : LED_BLINK);
+}
+
+// BIT, the desk robot, over the radio: its frames go to the BIT and Pong
+// screens, and when it turns up after a long while YETI is delighted - it is
+// the base YETI-7 lost, found again.
+static void watch_bit(uint32_t now) {
+    buddy_listen(app_wants_link(&s_app));
+    if (app_wants_link(&s_app)) s_bit_at = now ? now : 1;
+    bl_msg_t m;
+    bool delivered;
+    while (buddy_recv(&m)) {
+        s_bit_at = now ? now : 1;
+        app_on_link(&s_app, &m, now);
+    }
+    while (buddy_take_done(&m, &delivered)) app_on_link_done(&s_app, &m, delivered, now);
+    if (buddy_take_arrival() && !app_active(&s_app) && !s_policy.night && !face_hung(&s_face) && !s_singing) {
+        ESP_LOGI(TAG, "BIT is near");
+        face_fx(&s_face, FX_GLITCH, "BASE FOUND: BIT", now, 1600);
+        face_react(&s_face, EXPR_EXCITED, now, 3000);
+        sound_fx(SND_HI);
+        led_pattern(LED_DOUBLE);
     }
 }
 
@@ -251,15 +372,12 @@ static void run_story(uint32_t now) {
         face_react(&s_face, EXPR_EXCITED, now, 3000);
         led_pattern(LED_BLINK);
     }
+    // Not right after playing with BIT either: a trick that fell due during
+    // a match would otherwise go off the moment the face came back.
+    const bool after_bit = s_bit_at != 0 && now - s_bit_at < BIT_QUIET_MS;
     const bool idle = !app_active(&s_app) && !s_policy.night && !s_singing && !s_petted &&
-                      s_face.fx == FX_NONE;
-    switch (story_update(&s_story, now, app_needs(&s_app), idle, !s_app.save.muted)) {
-        case STORY_ALARM:
-            ESP_LOGI(TAG, "story: alarm (needs 0x%x)", app_needs(&s_app));
-            sound_fx(SND_ALARM);
-            led_pattern(LED_SIREN);
-            face_fx(&s_face, FX_ALARM, NULL, now, 4000);
-            break;
+                      s_face.fx == FX_NONE && !after_bit;
+    switch (story_update(&s_story, now, idle, s_app.save.volume > 0)) {
         case STORY_GLITCH: {
             const char *line = story_log(&s_story);
             ESP_LOGI(TAG, "story: glitch \"%s\"", line);
@@ -289,15 +407,15 @@ void app_main(void) {
     const bool brownout = power_reset_was_brownout();
     power_init();
 
-    if (i2c_bus_init() == ESP_OK) display_init(i2c_bus_handle(), CONTRAST_DAY);
+    storage_load(&s_save);
+    if (i2c_bus_init() == ESP_OK) display_init(i2c_bus_handle(), app_contrast(s_save.brightness));
 
     battery_init();
     s_battery = battery_read();
     if (brownout || s_battery.level == BATTERY_CRITICAL) lowbat_shutdown();
 
-    storage_load(&s_save);
     sound_init();
-    sound_set_muted(s_save.muted);
+    sound_set_volume(s_save.volume);
     led_init();
     sound_set_note_hook(note_flash);
     input_init();
@@ -305,17 +423,21 @@ void app_main(void) {
     input_accel_set_orient(s_save.orient);
     input_subscribe(on_input, NULL);
     net_init();
+    buddy_init();
 
     uint32_t now = (uint32_t)now_ms64();
     face_init(&s_face, esp_random(), now);
     face_boot(&s_face, now);
     led_pattern(LED_RISE);
-    policy_init(&s_policy);
+    policy_init(&s_policy, now_ms64());
     app_init(&s_app, &ENV, &s_save, esp_random());
     story_init(&s_story, esp_random(), now);
     uint64_t next_battery = now_ms64() + BATTERY_SAMPLE_MS;
+    bool battery_due = false;
+    s_charging = battery_cable_in();
+    ESP_LOGI(TAG, "charging cable %s", s_charging ? "in" : "out");
 
-    ESP_LOGI(TAG, "v0.6 running; buttons=%d accel=%d sound=%d led=%d touch=%d mic=%d battery_adc=%d wifi=%d ble=%d",
+    ESP_LOGI(TAG, "v0.8 running; buttons=%d accel=%d sound=%d led=%d touch=%d mic=%d battery_adc=%d wifi=%d ble=%d",
              FEATURE_BUTTONS, FEATURE_ACCEL, FEATURE_SOUND, FEATURE_LED, FEATURE_TOUCH, FEATURE_MIC,
              FEATURE_BATTERY_ADC, FEATURE_WIFI, FEATURE_BLE);
     sound_hello();
@@ -327,36 +449,48 @@ void app_main(void) {
         input_poll(now);
         input_dispatch(now);
 
+        int mg[3];
+        const bool have_mg = input_accel_mg(mg);
+        if (have_mg) policy_feel(&s_policy, mg, oriented(), now64);
+        const bool screen_was_off = policy_screen_off(&s_policy);
         if (policy_update(&s_policy, now64)) {
-            ESP_LOGI(TAG, "night mode %s", s_policy.night ? "on" : "off");
+            ESP_LOGI(TAG, "%s", !s_policy.night ? "awake" : s_policy.face_down ? "face down: screen off" : "asleep");
             if (s_policy.night) app_close(&s_app);
+            buddy_set_awake(!s_policy.night);
             face_set_night(&s_face, s_policy.night, now);
-            display_set_contrast(policy_contrast(&s_policy));
+            apply_contrast();
         }
+        if (policy_screen_off(&s_policy) != screen_was_off) display_power(!policy_screen_off(&s_policy));
 
+        // The battery. The mic holds the ADC while it listens: a refused read
+        // pauses the mic (battery_due) and tries again next frame.
         if (now64 >= next_battery) {
-            next_battery = now64 + BATTERY_SAMPLE_MS;
-            s_battery = battery_read();
-            if (s_battery.level == BATTERY_CRITICAL) lowbat_shutdown();
+            const battery_status_t b = battery_read();
+            if (b.mv >= 0 || now64 >= next_battery + 3000) {  // got one, or gave up for now
+                next_battery = now64 + BATTERY_SAMPLE_MS;
+                battery_due = false;
+                if (b.mv >= 0) s_battery = b;
+                if (s_battery.level == BATTERY_CRITICAL) lowbat_shutdown();
+            } else {
+                battery_due = true;
+            }
         }
+        watch_charger(now);
 
-        app_tick(&s_app, now, s_policy.night);
-        face_set_needs(&s_face, app_needs(&s_app));
-
-        const bool was_app = app_active(&s_app);
+        const bool was_app = s_app.mode == APP_MENU || s_app.mode == APP_GAME;
         app_update(&s_app, now);
         const int mood = app_take_mood(&s_app);
-        if (app_take_sleep(&s_app)) {
-            policy_sleep(&s_policy);  // night starts at the next policy_update
-            sound_goodnight();
-        } else if (was_app && !app_active(&s_app)) {
-            // Back from the menu or a game: the face shows how it went.
+        if (app_active(&s_app)) policy_note_activity(&s_policy, now64);  // a game in play, a song
+        if (was_app && !app_active(&s_app) && !s_policy.night) {
+            // The menu or a game timed out: the face shows how it went.
             face_react(&s_face, mood >= 0 ? (expression_t)mood : EXPR_HAPPY, now, 4000);
         }
 
+        watch_bit(now);
+
         if (s_singing && app_active(&s_app)) stop_song(INPUT_NONE, now);
         // Ears on while awake on the face (the mic's ADC keeps the chip out of light sleep).
-        input_mic_listen(!s_policy.night && !app_active(&s_app));
+        input_mic_listen(!battery_due && !s_policy.night && (!app_active(&s_app) || app_wants_mic(&s_app)));
         const int stage = s_face.petting ? s_face.pet_stage : -1;
         const uint32_t beat = face_heartbeat_ms(&s_face);
         if (beat && (int32_t)(s_next_purr - now) > (int32_t)beat) s_next_purr = now;  // starts at once
@@ -381,11 +515,12 @@ void app_main(void) {
         }
         run_story(now);
 
-        int mg[3];
-        if (!app_active(&s_app) && input_accel_mg(mg)) face_feel(&s_face, mg, oriented(), now);
+        if (!app_active(&s_app) && have_mg) face_feel(&s_face, mg, oriented(), now);
         face_update(&s_face, now);
         play_cue(face_take_cue(&s_face));
-        if (app_active(&s_app)) {
+        if (policy_screen_off(&s_policy)) {
+            // Face down: nothing to show.
+        } else if (app_active(&s_app)) {
             gfx_clear(&s_gfx);
             gfx_set_offset(&s_gfx, 0, 0);
             app_render(&s_app, &s_gfx);

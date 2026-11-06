@@ -183,19 +183,13 @@ static void test_reactions(void) {
     for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
     assert(f.expr == EXPR_LAUGH);
 
-    // The mic: a shout scares it (with a sound), blowing makes it sneeze,
-    // talking makes it look up and listen until the talk ends.
+    // The mic: only talking counts (claps, shouts and blowing are filtered
+    // out before the face); it looks up and listens until the talk ends.
+    face_take_cue(&f);  // the laugh's
     face_on_event(&f, INPUT_LOUD, now);
-    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
-    assert(f.expr == EXPR_SCARED && face_take_cue(&f) == CUE_SCARED);
     face_on_event(&f, INPUT_BLOW, now);
-    assert(f.idle == IDLE_BLOWN && face_take_cue(&f) == CUE_WIND);
-    for (int i = 0; i < 20; i++) face_update(&f, now += FRAME);
-    assert(f.look_x != 0);  // pushed aside by the wind
-    for (int i = 0; i < 25; i++) face_update(&f, now += FRAME);
-    assert(f.idle == IDLE_SNEEZE && face_take_cue(&f) == CUE_SNEEZE);
-    for (int i = 0; i < 100; i++) face_update(&f, now += FRAME);
-    assert(f.idle == IDLE_NONE);
+    face_on_event(&f, INPUT_CLAP, now);
+    assert(face_take_cue(&f) == CUE_NONE);
     face_on_event(&f, INPUT_HEAR, now);
     for (int i = 0; i < 60; i++) face_update(&f, now += FRAME);
     assert(f.expr == EXPR_SURPRISED && f.look_y < 0);
@@ -217,15 +211,9 @@ static void test_reactions(void) {
     show(&f, EXPR_NEUTRAL, &now);
     face_on_event(&f, INPUT_BTN_B_SHORT, now);
     assert(!f.has_pending && f.expr == EXPR_NEUTRAL);
-    // B held steps through every face except the low-battery one, then wraps.
-    int seen[EXPR_COUNT] = {0};
-    for (int k = 0; k < EXPR_LOWBAT; k++) {
-        face_on_event(&f, INPUT_BTN_B_LONG, now);
-        for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
-        seen[f.expr]++;
-    }
-    for (int e = 0; e < EXPR_LOWBAT; e++) assert(seen[e] == 1);
-    assert(f.expr == EXPR_NEUTRAL);
+    // ...and held: that's the music.
+    face_on_event(&f, INPUT_BTN_B_LONG, now);
+    assert(!f.has_pending && f.expr == EXPR_NEUTRAL);
 
     // Animations end, so the main loop can drop to the slow frame rate.
     show(&f, EXPR_HAPPY, &now);
@@ -654,42 +642,6 @@ static void test_body_sense(void) {
     assert(!f.upside && face_take_cue(&f) == CUE_NONE);
 }
 
-static void test_needs(void) {
-    static face_t f;
-    static gfx_t g;
-    uint32_t now = 0;
-    face_init(&f, 23, now);
-    // Hungry: much sadder over an hour than a cared-for pet.
-    int sad_ok = 0, sad_hungry = 0;
-    for (int pass = 0; pass < 2; pass++) {
-        face_init(&f, 23, 0);
-        face_set_needs(&f, pass ? PET_NEED_FOOD : 0);
-        for (now = 0; now < 3600u * 1000u; now += FRAME) {
-            face_update(&f, now);
-            *(pass ? &sad_hungry : &sad_ok) += f.expr == EXPR_SAD;
-        }
-    }
-    printf("  sad frames: cared for %d, hungry %d\n", sad_ok, sad_hungry);
-    assert(sad_hungry > 3 * sad_ok);
-
-    // The thought bubble shows now and then, inside the burn-in margin, with
-    // the eyes glanced fully right.
-    face_set_needs(&f, PET_NEED_FOOD | PET_NEED_FUN);
-    show(&f, EXPR_NEUTRAL, &now);
-    f.reacting = false;
-    int shown = 0;
-    for (int s = 0; s < 30; s++) {
-        now += 1000;
-        f.now = now;
-        f.look_x = f.look_tx = 12;
-        gfx_clear(&g);
-        face_render(&f, &g);
-        assert(lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);
-        shown += gfx_get_pixel(&g, 117, 3);  // the bubble's top edge
-    }
-    assert(shown >= 6 && shown <= 10);  // 4 s of every 15
-}
-
 static void test_fx(void) {
     static face_t f;
     static gfx_t g, plain;
@@ -698,17 +650,6 @@ static void test_fx(void) {
     show(&f, EXPR_NEUTRAL, &now);
     gfx_clear(&plain);
     face_render(&f, &plain);
-
-    // Alarm: sad underneath, the screen flashes, then it ends on its own.
-    face_fx(&f, FX_ALARM, NULL, now, 4000);
-    for (int i = 0; i < 10; i++) face_update(&f, now += FRAME);
-    assert(f.expr == EXPR_SAD && face_is_animating(&f));
-    f.now = f.fx_since + 160;  // an inverted flash frame
-    gfx_clear(&g);
-    face_render(&f, &g);
-    assert(lit(&g) > GFX_W * GFX_H / 2);
-    for (int i = 0; i < 150; i++) face_update(&f, now += FRAME);
-    assert(f.fx == FX_NONE);
 
     // Glitch: the picture is torn and shows the log line, then "what?".
     face_fx(&f, FX_GLITCH, "SIGNAL LOST", now, 1800);
@@ -779,28 +720,41 @@ static void test_time_wrap(void) {
 
 static void test_policy(void) {
     policy_t p;
-    policy_init(&p);
+    policy_init(&p, 0);
     assert(!policy_update(&p, 0) && !p.night);
-    const uint64_t night_at = NIGHT_CYCLE_AWAKE_MS + 1000;
-    assert(policy_update(&p, night_at) && p.night);
-    assert(policy_contrast(&p) == CONTRAST_NIGHT);
-    // Input wakes it for the rest of this night...
-    policy_on_event(&p, INPUT_TAP, night_at + 10);
-    assert(policy_update(&p, night_at + 20) && !p.night);
-    // ...but the next night comes as scheduled.
-    const uint64_t cycle = (uint64_t)NIGHT_CYCLE_AWAKE_MS + NIGHT_CYCLE_NIGHT_MS;
-    policy_update(&p, cycle + 5);
-    assert(!p.night);
-    assert(policy_update(&p, cycle + night_at) && p.night);
-    // A long press is just input now; the menu's SLEEP forces night until
-    // the next input.
-    policy_init(&p);
-    policy_on_event(&p, INPUT_BTN_A_LONG, 100);
-    assert(!policy_update(&p, 200) && !p.night);
-    policy_sleep(&p);
-    assert(policy_update(&p, 300) && p.night);
-    policy_on_event(&p, INPUT_BTN_A_SHORT, 400);
-    assert(policy_update(&p, 500) && !p.night);
+    // Untouched for SLEEP_AFTER_MS: it dozes off, dim.
+    assert(!policy_update(&p, SLEEP_AFTER_MS - 1) && !p.night);
+    assert(policy_update(&p, SLEEP_AFTER_MS) && p.night);
+    assert(policy_contrast(&p, 0x30) == CONTRAST_NIGHT && !policy_screen_off(&p));
+    // Any input wakes it, at the brightness it was given.
+    policy_on_event(&p, INPUT_TAP, SLEEP_AFTER_MS + 10);
+    assert(policy_update(&p, SLEEP_AFTER_MS + 20) && !p.night);
+    assert(policy_contrast(&p, 0x30) == 0x30);
+    // Activity stamped just after the frame's time is not "a long time ago".
+    policy_note_activity(&p, SLEEP_AFTER_MS + 500);
+    assert(!policy_update(&p, SLEEP_AFTER_MS + 499) && !p.night);
+
+    // Picking it up wakes it; lying still does not.
+    uint64_t t = 2 * SLEEP_AFTER_MS + 1000;
+    const int flat[3] = {0, 0, 1000}, held[3] = {300, 700, 500};
+    policy_feel(&p, flat, true, t);
+    assert(policy_update(&p, t) && p.night);
+    for (int i = 0; i < 10; i++) policy_feel(&p, flat, true, t += 200);
+    assert(!policy_update(&p, t) && p.night);
+    policy_feel(&p, held, true, t += 200);
+    assert(policy_update(&p, t) && !p.night);
+
+    // Face down: asleep with the screen off after FACEDOWN_HOLD_MS; lifted,
+    // awake again. Uncalibrated, face-down cannot be told.
+    const int down[3] = {0, 0, -1000};
+    policy_feel(&p, down, true, t += 200);
+    assert(!policy_update(&p, t) && !policy_screen_off(&p));
+    for (int i = 0; i < 10; i++) policy_feel(&p, down, true, t += 200);
+    assert(policy_update(&p, t) && p.night && policy_screen_off(&p));
+    policy_feel(&p, held, true, t += 200);
+    assert(policy_update(&p, t) && !p.night && !policy_screen_off(&p));
+    for (int i = 0; i < 20; i++) policy_feel(&p, down, false, t += 200);
+    assert(!policy_screen_off(&p));
 
     // Burn-in: stays in range and actually moves.
     int moved = 0, px = 0, py = 0;
@@ -831,16 +785,51 @@ static void test_battery(void) {
     assert(battery_level_from_mv(BATTERY_MV_LOW + 20, BATTERY_LOW) == BATTERY_LOW);
     assert(battery_level_from_mv(BATTERY_MV_LOW + 60, BATTERY_LOW) == BATTERY_OK);
     assert(battery_level_from_mv(BATTERY_MV_CRITICAL, BATTERY_OK) == BATTERY_CRITICAL);
+    assert(battery_level_from_mv(5400, BATTERY_OK) == BATTERY_UNKNOWN);  // USB on the 5V pin
+    assert(battery_level_from_mv(4600, BATTERY_OK) == BATTERY_OK);       // a full cell, read high
+    assert(battery_level_from_mv(4200, BATTERY_OK) == BATTERY_OK);       // a full cell is not USB
 
     static gfx_t g;
     gfx_clear(&g);
     const battery_status_t unknown = {BATTERY_UNKNOWN, -1, -1};
-    hud_battery(&g, &unknown, 0);
+    hud_battery(&g, &unknown, false, 0);
     assert(lit(&g) == 0);  // icon hidden without an ADC
     const battery_status_t ok = {BATTERY_OK, 3900, 70};
-    hud_battery(&g, &ok, 0);
-    assert(lit(&g) > 0);
+    hud_battery(&g, &ok, false, 0);
+    const int still = lit(&g);
+    assert(still > 0);
     assert(lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);  // safe to shift
+
+    // Charging: a bolt, and the fill sweeps up from the charge so far.
+    int lo = 1 << 30, hi = 0;
+    for (uint32_t t = 0; t < 5000; t += 50) {
+        gfx_clear(&g);
+        hud_battery(&g, &ok, true, t);
+        const int n = lit(&g);
+        lo = n < lo ? n : lo;
+        hi = n > hi ? n : hi;
+        assert(lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);
+    }
+    assert(lo > still && hi > lo);  // the bolt, then the sweep
+    gfx_clear(&g);
+    hud_battery(&g, &unknown, true, 0);
+    assert(lit(&g) > 0);  // charging on USB: still shown
+    const battery_status_t full = {BATTERY_OK, 4180, 100};
+    gfx_clear(&g);
+    hud_battery(&g, &full, true, 0);
+    const int f0 = lit(&g);
+    gfx_clear(&g);
+    hud_battery(&g, &full, true, 1234);
+    assert(lit(&g) == f0);  // full: no sweep
+    gfx_clear(&g);
+    hud_muted(&g);
+    assert(lit(&g) > 10 && lit_in_margin(&g, BURNIN_MAX_SHIFT_PX) == 0);  // the mute icon, safe to shift
+    const battery_status_t low = {BATTERY_LOW, 3450, 5};
+    for (uint32_t t = 0; t < 2000; t += 250) {  // charging: no low blink
+        gfx_clear(&g);
+        hud_battery(&g, &low, true, t);
+        assert(lit(&g) > 0);
+    }
 }
 
 int main(void) {
@@ -855,7 +844,6 @@ int main(void) {
     RUN(test_hang);
     RUN(test_animations);
     RUN(test_body_sense);
-    RUN(test_needs);
     RUN(test_fx);
     RUN(test_night);
     RUN(test_time_wrap);

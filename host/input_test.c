@@ -332,6 +332,31 @@ static int total(const heard_t *h) {
     return n;
 }
 
+static void test_mic_loudness(void) {
+    static mic_t m;
+    uint32_t now = 5000;
+    heard_t h = {0};
+    mic_init(&m);
+    hear(&m, 0, 0, 5000, &now, &h);  // a quiet room
+    assert(mic_loudness(&m) == 0);
+    // Louder sounds read higher, a shout near the top; it falls back after.
+    int prev = 0;
+    for (int amp = 120; amp <= 600; amp += 160) {
+        hear(&m, 1, amp, 100, &now, &h);
+        const int l = mic_loudness(&m);
+        printf("  amplitude %d: loudness %d\n", amp, l);
+        assert(l > prev && l <= 100);
+        prev = l;
+    }
+    assert(prev >= 80);
+    hear(&m, 0, 0, 500, &now, &h);
+    assert(mic_loudness(&m) == 0);
+    // Deaf (our own buzzer): 0, however loud.
+    mic_deaf(&m, now + 1000);
+    hear(&m, 1, 600, 200, &now, &h);
+    assert(mic_loudness(&m) == 0);
+}
+
 static void test_mic(void) {
     static mic_t m;
     uint32_t now = 5000;
@@ -448,6 +473,7 @@ int main(void) {
 #define RUN(t) (printf("%s\n", #t), t())
     RUN(test_touch);
     RUN(test_mic);
+    RUN(test_mic_loudness);
     RUN(test_button);
     RUN(test_motion_still);
     RUN(test_motion_shake);

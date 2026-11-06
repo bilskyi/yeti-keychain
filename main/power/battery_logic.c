@@ -26,7 +26,7 @@ int battery_percent_from_mv(int mv) {
 }
 
 battery_level_t battery_level_from_mv(int mv, battery_level_t prev) {
-    if (mv < 0) return BATTERY_UNKNOWN;
+    if (mv < 0 || mv > BATTERY_MV_USB) return BATTERY_UNKNOWN;  // no reading, or on USB
     if (mv <= BATTERY_MV_CRITICAL) return BATTERY_CRITICAL;
     const int low = BATTERY_MV_LOW + ((prev == BATTERY_LOW || prev == BATTERY_CRITICAL)
                                           ? HYSTERESIS_MV : 0);

@@ -1,5 +1,14 @@
 # Yeti case: 3 belly buttons + battery power
 
+> **Current print files: [`latest/`](latest/)** (updated 2026-11-05, with a
+> Russian `README.txt` for printing and assembly). This version has **one
+> USB-C on the back (charging only)** and **no electronics carrier**: the
+> boards and battery are held with glue and tape, and flashing means opening
+> the back plate. The body was updated too. These STLs were edited outside
+> this folder, so the SCAD files below still build the older two-port +
+> carrier version and are no longer the source of truth for what gets
+> printed.
+
 The Yeti from **Compagnon 309** by its MakerWorld author
 (makerworld.com/en/models/2109424; check its licence before sharing a remix).
 Files from `~/Downloads/yeti_v1.2_stls`, copied into `original/`, **not

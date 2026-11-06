@@ -18,7 +18,7 @@
 | ESP32-C3 Super Mini | generic clone, native USB-C, no charger |
 | 1.3" 128×64 I²C OLED, 4-pin | SH1106 assumed; SSD1306 is a one-line switch in `main/config.h` |
 | TP4056 USB-C module with DW01 protection | charging + over-discharge cut-off |
-| LiPo pouch cell | **300 mAh**, size TBD |
+| LiPo pouch cell | **850 mAh** (was 300 mAh: the stock TP4056 charges at ~1 A, ~1.2C for 850 mAh) |
 | Slide switch | in OUT+ line |
 | Tactile buttons ×3 | 6×6 mm, A/B/C |
 | LIS3DH accelerometer breakout | I²C, shares the OLED bus |
@@ -124,14 +124,16 @@ GPIO, so it goes through a transistor):
 
 | Function | Pin | Notes |
 |---|---|---|
-| Battery sense | needs an ADC1 pin (GPIO0-4); GPIO4 now has the mic, so one of them moves when the battery goes in | 100 kΩ / 100 kΩ divider (1 MΩ / 1 MΩ also works) from battery+ (TP4056 OUT+ side of the switch) to GND, 100 nF from GPIO4 to GND |
+| Battery sense | **GPIO2** (ADC1; strapping pin, so check it still boots) | 100 kΩ / 100 kΩ divider from the 5V pin (after the switch) to GND, middle to GPIO2, optional 100 nF from GPIO2 to GND. Then `PIN_BATTERY_ADC 2`, `FEATURE_BATTERY_ADC 1` |
+| Charger sense | **GPIO21** | TP4056 **IN+** (USB 5 V, only while the charging cable is in) → 5.1 kΩ → GPIO21 → 2 × 5.1 kΩ in series → GND (fitted 2026-10-28). ~3.3 V with the cable, 0 V without. Only the end of the last resistor touches GND: the joints between them must not. Drives the charging animation; "full" comes from the battery voltage (≥ ~4.15 V, switch on). With the switch off and the cable in, ~0.8 mA leaks into the unpowered chip through the pin's clamp diode: charge with the switch on |
 
 ## Pins to avoid
 
 - **GPIO2, GPIO8, GPIO9**: strapping pins. GPIO8 also drives the onboard LED.
 - **GPIO18/19**: the native USB D−/D+.
 - GPIO20 is UART0 RX: free here, since the console is the native USB. GPIO21
-  is UART0 TX: the ROM drives it at boot, so only an output belongs there.
+  is UART0 TX: the ROM drives it at boot, so nothing that drives it hard
+  belongs there (the charger-sense divider, 100k/200k, is weak enough).
 - Only **GPIO0–5** can wake the C3 from deep sleep, so every wake source
   (buttons, LIS3DH INT1) must sit on those pins. Button A on GPIO20 is the
   exception: it wakes from light sleep only, and B or C wakes from deep sleep.

@@ -82,12 +82,15 @@ input_event_t mic_block(mic_t *m, const uint16_t *s, int n, uint32_t now) {
     const int level = (int)(sum / n);
 
     if (m->deaf) {
+        m->loud = 0;
         if (!after(now, m->deaf_until)) return INPUT_NONE;  // our own buzzer
         m->deaf = false;
     }
     if (m->floor == 0) m->floor = level * 16 + 16;
 
     const int thr = threshold(m);
+    m->thr = thr;
+    m->loud = level > m->loud ? level : m->loud * 7 / 8;  // ~80 ms to fall by half
     if (!m->in_sound) {
         // The noise floor drops fast and creeps up slowly (~5 s), so a
         // sound never raises it much but a noisy room does.
@@ -149,6 +152,14 @@ bool mic_take_sound(mic_t *m, mic_sound_t *out) {
     *out = m->last;
     m->has_last = false;
     return true;
+}
+
+int mic_loudness(const mic_t *m) {
+    if (m->deaf || m->loud <= m->thr) return 0;
+    const int range = MIC_LOUD_LEVEL - m->thr;
+    if (range <= 0) return 100;
+    const int pct = (m->loud - m->thr) * 100 / range;
+    return pct > 100 ? 100 : pct;
 }
 
 int mic_syllables(const mic_t *m) {

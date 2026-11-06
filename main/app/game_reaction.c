@@ -47,7 +47,6 @@ bool reaction_event(app_t *a, input_event_t ev, uint32_t now) {
             r->phase = RX_RESULT;
             r->t0 = now;
             app_play(a, r->best ? SND_RECORD : SND_POINT);
-            app_reward(a, 3, 1, r->best ? 6 : 3);
             break;
         }
     }
@@ -80,7 +79,7 @@ void reaction_render(const app_t *a, gfx_t *g) {
         case RX_READY:
             font_draw_centered(g, 64, 8, "WAIT FOR", 1, GFX_WHITE);
             font_draw_centered(g, 64, 20, "NOW!", 2, GFX_WHITE);
-            app_hint(g, "A:START", "B:BACK");
+            app_hint(g, "START", NULL, "BACK");
             best_line(a, g, 42);
             break;
         case RX_WAIT: {
@@ -107,7 +106,7 @@ void reaction_render(const app_t *a, gfx_t *g) {
             } else {
                 best_line(a, g, 42);
             }
-            app_hint(g, "A:AGAIN", "B:BACK");
+            app_hint(g, "AGAIN", NULL, "BACK");
             break;
         }
         case RX_EARLY:
@@ -119,11 +118,11 @@ void reaction_render(const app_t *a, gfx_t *g) {
                 gfx_line(g, 104, 10 + k, 88, 15 + k, GFX_WHITE);
             }
             font_draw_centered(g, 64, 38, "TOO SOON!", 2, GFX_WHITE);
-            app_hint(g, "A:AGAIN", "B:BACK");
+            app_hint(g, "AGAIN", NULL, "BACK");
             break;
         case RX_SLOW:
             font_draw_centered(g, 64, 16, "TOO SLOW", 2, GFX_WHITE);
-            app_hint(g, "A:AGAIN", "B:BACK");
+            app_hint(g, "AGAIN", NULL, "BACK");
             break;
     }
 }

@@ -15,3 +15,6 @@ host/out/
 case/yeti/original/
 case/yeti/previews/
 case/yeti/out/pack/
+
+# Remixed MakerWorld meshes: not published until the original's licence is checked
+case/yeti/latest/print/

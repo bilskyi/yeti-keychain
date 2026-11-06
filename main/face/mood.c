@@ -4,8 +4,7 @@
 // A weighted random walk. Weights depend on the current mood (moods have some
 // inertia and favour plausible neighbours) and on context: at night it is
 // always sleepy, and the longer nobody has touched the keychain the more
-// often it gets bored: sleepy, or a little sad. The pet's needs weigh in too:
-// hungry or bored it is sad far more often, tired it is sleepy.
+// often it gets bored: sleepy, or a little sad.
 
 #include "face/face.h"
 
@@ -38,10 +37,6 @@ expression_t mood_pick(rng_t *rng, expression_t current, const mood_ctx_t *ctx,
     for (int i = 0; i < EXPR_MOOD_COUNT; i++) {
         w[i] = WEIGHTS[current][i];
         if ((i == EXPR_SLEEPY || i == EXPR_SAD) && ctx->ms_since_input >= BORED_AFTER_MS) w[i] *= 3;
-        if (i == EXPR_SAD && (ctx->needs & PET_NEED_FOOD)) w[i] = w[i] * 4 + 10;
-        if (i == EXPR_SAD && (ctx->needs & PET_NEED_FUN)) w[i] = w[i] * 2 + 5;
-        if (i == EXPR_SLEEPY && (ctx->needs & PET_NEED_SLEEP)) w[i] = w[i] * 4 + 10;
-        if ((i == EXPR_HAPPY || i == EXPR_LOVE) && ctx->needs) w[i] /= 3;
         total += w[i];
     }
 

@@ -94,7 +94,6 @@ void catch_update(app_t *a, uint32_t now) {
         c->best = app_record(a, &a->save.catch_pts, (uint16_t)c->score, false);
         a->mood = c->best ? EXPR_EXCITED : EXPR_HAPPY;
         app_play(a, c->best ? SND_RECORD : SND_OVER);
-        app_reward(a, 4 + (c->score > 16 ? 16 : c->score), 3, 2 + c->score / 2);
         return;
     }
     if (app_elapsed(now, c->next_spawn, 0)) {
@@ -134,7 +133,9 @@ void catch_render(const app_t *a, gfx_t *g) {
         gfx_fill_circle(g, 88, 26, 3, GFX_WHITE);
         font_draw(g, 30, 32, "+1", 1, GFX_WHITE);
         font_draw(g, 80, 32, "-1", 1, GFX_WHITE);
-        font_draw_centered(g, 64, 44, "A:START  B:BACK", 1, GFX_WHITE);
+        // The hint line sits higher here: the Yeti is at the bottom.
+        font_draw(g, 1, 44, "START", 1, GFX_WHITE);
+        font_draw(g, GFX_W - 1 - font_width("BACK", 1), 44, "BACK", 1, GFX_WHITE);
         player(g, c->x);
         return;
     }

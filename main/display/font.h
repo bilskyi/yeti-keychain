@@ -13,5 +13,7 @@
 // Draws s with its top-left at (x, y). Returns the width drawn.
 int font_draw(gfx_t *g, int x, int y, const char *s, int scale, gfx_color_t c);
 int font_width(const char *s, int scale);
+// The 5 columns of a character (LSB on top); a blank for ones it lacks.
+const uint8_t *font_glyph(char c);
 // Centred on cx.
 void font_draw_centered(gfx_t *g, int cx, int y, const char *s, int scale, gfx_color_t c);

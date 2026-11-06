@@ -55,8 +55,11 @@ static void log_sound(void) {
              s.ev == INPUT_NONE ? "nothing" : input_event_name(s.ev));
 }
 
+// Only talking reaches the rest of the firmware: claps, blowing and bangs are
+// not reactions any more. A shout is still talking.
 static void post(input_event_t ev) {
-    if (ev == INPUT_NONE) return;
+    if (ev == INPUT_LOUD) ev = INPUT_TALK;
+    if (ev != INPUT_HEAR && ev != INPUT_TALK) return;
     if (ev == INPUT_TALK) s_syllables = mic_syllables(&s_mic);
     input_post(ev);
     input_kick();
@@ -183,6 +186,11 @@ int input_mic_syllables(void) {
     return s_syllables;
 }
 
+int input_mic_loudness(void) {
+    if (s_absent || !s_task) return -1;
+    return s_running ? mic_loudness(&s_mic) : 0;
+}
+
 const input_source_t input_source_mic = {
     .name = "mic",
     .init = init,
@@ -207,6 +215,10 @@ void input_mic_set_deaf_check(bool (*check)(void)) {
 
 int input_mic_syllables(void) {
     return 1;
+}
+
+int input_mic_loudness(void) {
+    return -1;
 }
 
 #endif
