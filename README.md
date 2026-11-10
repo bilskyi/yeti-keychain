@@ -3,6 +3,14 @@
 An animated pixel-art face on a 1.3" 128×64 OLED, driven by an ESP32-C3 Super
 Mini on a LiPo. ESP-IDF v5.3, plain C, no external libraries.
 
+![The yeti case: front, three-quarter and back](docs/img/yeti.png)
+
+<sub>The current print files from [`case/yeti/latest/`](case/yeti/latest/),
+rendered white with black buttons and bezel. The faces on the screens are
+real frames from the firmware.</sub>
+
+![Faces: neutral, happy, love, laugh, angry, sleepy, dizzy, petted](docs/img/faces.png)
+
 > ## ⚠️ Safety
 > 1. **Never plug USB into the Super Mini while the slide switch is ON.** It
 >    back-feeds 5 V into the LiPo. Switch OFF, then plug in to flash. Charge
@@ -39,6 +47,13 @@ Games: catch, maze (tilt to roll the ball), flappy, snake, dino roar (roar to
 jump), reaction, dice. 11 songs. Shake it, pet the touch pad, tickle it,
 talk to it. It dozes off after 10 minutes untouched, wakes when picked up, and turns the screen
 off lying face down (after Settings > Calibrate).
+
+![The games list and the status card](docs/img/games.png)
+
+![Songs and their animations](docs/img/music.png)
+
+<sub>All screens above are generated on the host from the same drawing code
+the device runs (`make -C host preview`, see below), not mock-ups.</sub>
 
 ## Build
 
